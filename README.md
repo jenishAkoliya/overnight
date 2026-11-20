@@ -58,6 +58,23 @@ make smoke                      # headless-Chrome UI test of all 8 pages
 
 **Firedrill / SRE**: 15 YAML scenarios (outages, 429 bursts, phishing, injection, spoofing, mid-run instructions…) run the real pipeline in isolated worlds. The SRE agent diagnoses failures, patches **only YAML/prompt files**, validates every patch against all 15 scenarios, and keeps it only if nothing regresses. Real Firedrill (cloud) is an optional final step: `scripts/fd` runs the project-local CLI (Node 24 in `.tools/`); it needs a browser sign-in at app.firedrill.run and event code TOKENSAND, then `python -m backend.firedrill_export` converts the scenarios. Until then the local harness is authoritative.
 
+## Hive (Superlinked expert models)
+Each item goes through a pipeline of expert models, each doing one small step and handing its result to the next:
+**Understand** (GLiNER) → **Classify** (GLiNER2.5-Decide) → **Risk** (Qwen3.8-27B) → **Safety** (Gemma-4-31B) → **Personal fit** (GLM-5.3-Flash, uses the user's facts) → **Next step** (Qwen3.5-4B, one concrete action).
+The steps are visible on the Council page. The hive can only add caution (AUTO→ASK when 3+ experts object); policy remains the authority. This is our orchestration over Superlinked-hosted models.
+
+## User facts and suggestions
+`backend/user_profile.yaml` (student, no car, San Jose, VTA/Caltrain/bike, no meetings before 10). The advisor and the Personal-fit expert turn these into suggestions, e.g. "You don't own a car, so this auto-insurance renewal is probably not yours", "No car: take VTA/Caltrain and leave 30 min early".
+
+## Memory: real Cognee
+`cognee==1.6.10` runs in `.venv-cognee` through `scripts/cognee_bridge.py`. Its LLM (Qwen3.8-27B) and embeddings (bge-m3, 1024d) are hosted Superlinked models. After each night the knowledge graph is built in the background; ask it from Overview → *Ask memory*.
+
+## Demo mailbox (self-send)
+`python scripts/demo_emails.py --set student --send` sends 12 synthetic `[OVERNIGHT DEMO]` emails from the test account to itself (only if it is the approved cortona93 account; refuses to send a set twice). Phishing/spoof examples are inserted with `spf=fail`. `--calendar` adds 3 demo events (`sendUpdates=none`). Requires `DEMO_SELF_SEND=true`.
+
+## Firedrill MCP
+`claude mcp add --transport http firedrill https://mcp.firedrill.run` is configured; run `/mcp` in Claude Code to sign in.
+
 ## Demo emails (optional)
 `make demo-mail` previews 8 synthetic `[OVERNIGHT DEMO]` emails (newsletter, receipt, invitation, follow-up, phishing, spoofed sender, preference conflict, insurance). `make demo-mail-send` sends them **only** to `DEMO_RECIPIENT`; with it unset nothing is sent. Verify delivery with `make ingest`.
 

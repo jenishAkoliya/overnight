@@ -84,3 +84,11 @@ Google OAuth, Slack token, Anthropic key + model choice, SIE mode, Persona sandb
 - Honest labels: audit separates EXTERNAL writes (real connectors) from sandbox (mock) writes; brief says 'prepared ... (simulated, dry run)'.
 - Calendar: real connector reachable but the Google Cloud project has the Calendar API DISABLED (403 accessNotConfigured) -> surfaced as DEGRADED. Manual step: enable it in Cloud Console.
 - Demo emails: scripts/send_demo_emails.py needs DEMO_RECIPIENT (not configured -> nothing sent).
+
+## 15:55 update
+- Hive = sequential expert pipeline on hosted Superlinked models (agents/swarm.py); 429 backoff; quorum escalation only.
+- user_profile.yaml (student, no car, San Jose) + agents/advisor.py suggestions; profile_mismatch flag (ask).
+- Real Cognee 1.6.10 in .venv-cognee via scripts/cognee_bridge.py (LLM Qwen3.8-27B + bge-m3 on Superlinked); background ingest; POST /memory/ask. COGNEE_API_KEY present in .env but unused (local Cognee chosen).
+- ALLOW_HOSTED_FOR_REAL_DATA=1 by user choice (test mailbox only). DRY_RUN=true.
+- Student email set (12) sent to cortona93 (self-send + 2 inserts). Live result 9/12 expected; 3 conservative misses (AUTO->ASK).
+- Firedrill MCP added (needs /mcp OAuth).
