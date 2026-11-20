@@ -1,0 +1,30 @@
+from ..bus import bus
+from ..contracts import SourceItem
+from ..integrations.airbyte_client import REGISTRY, get_connector, connectors_status
+
+
+class IngestAgent:
+    def run(self) -> list[SourceItem]:
+        items: list[SourceItem] = []
+        for name in REGISTRY:
+            with bus.timed("IngestAgent", "fetch", f"{name}: fetching") as _:
+                try:
+                    got = get_connector(name).fetch()
+                except Exception as e:  # outage: continue with other sources, report honestly
+                    bus.emit("IngestAgent", "fetch_failed", f"{name} unavailable: {e}", why="continuing with other sources")
+                    continue
+            mode = next(c["mode"] for c in connectors_status() if c["name"] == name)
+            bus.emit("IngestAgent", "fetched", f"{name}: {len(got)} items ({mode})")
+            items.extend(got)
+        deduped, seen = [], {}
+        for it in items:
+            key = it.id
+            if it.type == "event":
+                key = ("event", it.subject.strip().lower(), it.timestamp.isoformat())
+            if key in seen:
+                bus.emit("IngestAgent", "dedupe", f"Dropped duplicate: {it.subject}", why="same title and start time as existing event")
+                continue
+            seen[key] = 1
+            deduped.append(it)
+        bus.emit("IngestAgent", "done", f"{len(deduped)} normalized SourceItems from {len(REGISTRY)} sources")
+        return deduped

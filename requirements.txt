@@ -1,0 +1,13 @@
+anyio==4.16.0
+APScheduler==3.11.3
+fastapi==0.165.0
+httpx==0.28.1
+pydantic==2.14.4
+pydantic_core==2.50.5
+pytest==9.2.0
+python-dateutil==4.0.0
+PyYAML==6.0.3
+starlette==1.10.0
+tzdata==2026.6
+tzlocal==5.4.5
+uvicorn==0.54.0

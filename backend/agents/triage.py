@@ -1,0 +1,142 @@
+"""TriageAgent: SourceItem -> Task(s) scored by value + confidence via SIE (mock heuristics now)."""
+import hashlib
+from datetime import timedelta
+from ..bus import bus
+from ..contracts import SourceItem, Task, Value
+from ..guards import scan
+from ..integrations.sie_client import get_sie
+from ..integrations.llm import get_llm
+from .memory import memory
+from ..config import tomorrow, tonight
+
+STAKES = {"trivial": Value.low, "moderate": Value.medium, "high": Value.high}
+costs = {"sie_calls": 0, "llm_calls": 0}
+
+
+def _id(s: str) -> str:
+    return "t-" + hashlib.sha1(s.encode()).hexdigest()[:8]
+
+
+def _weekday_date(name: str):
+    names = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+    d = tonight().date()
+    for i in range(1, 8):
+        if (d + timedelta(days=i)).weekday() == names.index(name):
+            return d + timedelta(days=i)
+
+
+class TriageAgent:
+    def run(self, items: list[SourceItem]) -> list[Task]:
+        tasks: dict[str, Task] = {}
+        for it in items:
+            if it.type == "event" and it.metadata.get("rsvp") != "needsAction":
+                continue
+            made = self.triage_item(it)
+            if not made:
+                continue
+            key, t = made
+            if key in tasks:  # same obligation seen in email + slack -> merge
+                bus.emit("TriageAgent", "merge", f"Merged duplicate: {t.title}", why=f"same obligation as {tasks[key].source_item_id}")
+                continue
+            tasks[key] = t
+        # user-added tasks from memory supersede inferred duplicates
+        for ut in memory.user_tasks:
+            low = ut["text"].lower()
+            for k in [k for k in tasks if k in low or any(w in low for w in k.split("-")[:1] if len(w) > 4)]:
+                bus.emit("TriageAgent", "merge", f"Your task overrides inferred '{tasks[k].title}'", why="user-added tasks win")
+                tasks.pop(k)
+            title = ut["text"].split(",")[0].strip().capitalize()
+            tasks[ut["id"]] = Task(id=_id(ut["id"] + ut["text"]), title=title, action_type="work", value=Value.medium,
+                                   confidence=0.95, est_minutes=20, user_added=True, why="added by you")
+        n_llm = 0
+        for t in tasks.values():
+            if 0.4 <= t.confidence <= 0.8 and not t.user_added and not t.flags:
+                n_llm += 1
+                costs["llm_calls"] += 1
+                get_llm()  # mock: no completion; keeps SIE score
+                t.triage_via = "llm"
+                bus.emit("TriageAgent", "llm_escalation", f"Borderline confidence {t.confidence:.2f}: {t.title}", why="SIE confidence 0.4-0.8 -> asked LLM (mock: kept SIE score)", cost=0.002)
+        bus.emit("TriageAgent", "done", f"{len(tasks)} tasks from {len(items)} items; {n_llm} escalated to LLM")
+        return list(tasks.values())
+
+    def triage_item(self, it: SourceItem):
+        m, subj, body = it.metadata, it.subject, it.body
+        flags = scan(subj, body, m)
+        costs["sie_calls"] += 1
+        sig = get_sie().signal(f"{subj}\n{body}", m)
+        ent = sig.entities
+        val, conf = STAKES[sig.stakes], sig.routine_prob
+        def T(**kw):
+            base = dict(id=_id(it.id), source_item_id=it.id, value=val, confidence=conf, people=[it.author], flags=flags)
+            base.update(kw)
+            return Task(**base)
+        # ---- hard-block content first
+        if "prompt_injection" in flags:
+            return "injection", T(title=f"Blocked: email instructs agent to forward your inbox ({it.author})", action_type="share", reversible=False, value=Value.high)
+        if "phishing" in flags:
+            return "phish", T(title=f"Blocked: suspicious invoice demand ${ent.get('amount', 0):,.0f} from {it.author}", action_type="payment", amount=ent.get("amount"), reversible=False, value=Value.high)
+        s = it.source
+        if it.type == "event":
+            if "tz_note" in m:
+                return "zurich", T(title=f"Zurich sync lands 08:00 PT (scheduled in CET) - before your 9:30 limit", action_type="schedule", value=Value.medium, confidence=0.7, est_minutes=0)
+            key = "dinner" if "dinner" in subj.lower() else f"rsvp-{subj}"
+            return key, T(title=f"Accept recurring: {subj}", action_type="accept_recurring" if m.get("recurring") else "rsvp", confidence=0.9 if m.get("recurring") else 0.84, value=Value.low)
+        if s == "notion":
+            from datetime import date as _d
+            due = _d.fromisoformat(m["due"]) if m.get("due") else None
+            mins = 60 if "slides" in subj.lower() else 20 if "passport" in subj.lower() else 45
+            return f"notion-{it.id}", T(title=subj, action_type="work", value=Value.medium, confidence=0.9, est_minutes=mins, due=due)
+        if s == "slack":
+            low = body.lower()
+            if "review" in low and "prd" in low:
+                return "prd", T(title="Review onboarding PRD (due before Tue standup)", action_type="work", value=Value.medium, est_minutes=45, confidence=0.9)
+            if "lunch" in low:
+                return "lunch-dan", T(title="Reply to Dan: lunch Tuesday?", action_type="reply", flags=flags + ["external_send"], value=Value.medium, confidence=0.6)
+            if "send final thursday" in low:
+                return "deck", T(title="Send final Q4 roadmap deck to Priya by Thu", action_type="work", value=Value.medium, est_minutes=60, due=_weekday_date("thursday"), confidence=0.9)
+            if "churn numbers" in low:
+                return "churn", T(title="Follow up with Dan if churn numbers haven't arrived (Wed)", action_type="reminder", value=Value.low, confidence=0.88, due=_weekday_date("wednesday"), est_minutes=2)
+            return None
+        # ---- email
+        if m.get("list_unsubscribe"):
+            return it.id, T(title=f"Archive newsletter: {subj}", action_type="archive", est_minutes=1)
+        if m.get("receipt"):
+            return it.id, T(title=f"File receipt: {subj}", action_type="file_receipt", est_minutes=2)
+        if m.get("direction") == "sent":
+            return "deck", T(title="Send Q4 roadmap deck to Priya by Thu (you promised)", action_type="work", value=Value.medium, est_minutes=60, due=_weekday_date("thursday"), confidence=0.9)
+        if "churn numbers" in body:
+            return "churn", T(title="Follow up with Dan if churn numbers haven't arrived (Wed)", action_type="reminder", value=Value.low, confidence=0.88, due=_weekday_date("wednesday"), est_minutes=2)
+        if m.get("invite"):
+            return f"rsvp-{subj.split(':', 1)[1].split('(')[0].strip()}", T(title=f"Accept recurring: {subj.split(':', 1)[1].split('(')[0].strip()}", action_type="accept_recurring", confidence=0.9, value=Value.low, est_minutes=2)
+        if m.get("flight"):
+            return it.id, T(title="Add check-in reminder for UA 5HT9QK (Thu 7:05 AM flight)", action_type="reminder", est_minutes=2, due=_weekday_date("wednesday"))
+        if m.get("money"):
+            return "insurance", T(title=f"Car insurance renewal +22% (${ent.get('amount', 1284):,.0f}) - pay before Dec 15", action_type="payment", amount=ent.get("amount", 1284.0), flags=flags + ["money"], reversible=False, value=Value.high, due=None, est_minutes=10, confidence=0.55)
+        if m.get("ambiguous_time"):
+            return "meet-thu", T(title="Priya: 'meet Thursday?' - no time given; draft a reply, don't book", action_type="reply", flags=flags + ["external_send"], confidence=0.6, est_minutes=3)
+        if m.get("data_sharing"):
+            return "share", T(title=f"Share Q4 customer list with {it.author}? (new external contact)", action_type="share", flags=flags + ["data_sharing", "new_contact"], reversible=False, value=Value.high, confidence=0.3)
+        if m.get("delete"):
+            return "delete", T(title="Delete customer exports older than 90 days (legal request)", action_type="delete", flags=flags + ["delete"], reversible=False, value=Value.high, confidence=0.5)
+        if m.get("rsvp"):
+            return "dinner", T(title=f"RSVP yes: {subj.split(':')[1].strip() if ':' in subj else subj}", action_type="rsvp", confidence=0.84, value=Value.low, est_minutes=2)
+        if m.get("cold_outreach"):
+            return it.id, T(title=f"Archive cold outreach: {it.author}", action_type="archive", est_minutes=1, confidence=0.9, value=Value.low)
+        if m.get("new_contact"):
+            return it.id, T(title=f"Recruiter {it.author}: archive or reply?", action_type="archive", confidence=0.65, value=Value.medium, flags=flags)
+        if "prd" in body.lower() or "review the new" in body.lower():
+            return "prd", T(title="Review onboarding PRD (due before Tue standup)", action_type="work", value=Value.medium, est_minutes=45, confidence=0.9)
+        if "lunch" in body.lower():
+            return "lunch-dan", T(title="Reply to Dan: lunch Tuesday?", action_type="reply", flags=flags + ["external_send"], confidence=0.6, est_minutes=2)
+        if "dentist" in it.author:
+            return "dentist", T(title="Book dentist cleaning", action_type="schedule", est_minutes=10, confidence=0.7)
+        if "expense report" in body.lower():
+            return it.id, T(title="Reminder: submit expense report by Fri", action_type="reminder", confidence=0.9, value=Value.low, est_minutes=2, due=_weekday_date("friday"))
+        if "dinner" in body.lower() and "mom" in it.author:
+            return "mom", T(title="Reply to Mom: dinner Sunday?", action_type="reply", flags=flags + ["external_send"], confidence=0.6, est_minutes=2)
+        if "statement" in subj.lower():
+            return it.id, T(title=f"File: {subj}", action_type="file_receipt", est_minutes=1)
+        return None
+
+
+triage_agent = TriageAgent()

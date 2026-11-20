@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Overnight</title>
+<style>
+:root{--bg:#0b1020;--card:#141b34;--line:#26305a;--tx:#eef1ff;--mut:#9aa6d6;--ok:#38d39f;--ask:#ffc857;--ver:#b58cff;--bad:#ff6b6b;--acc:#5b8cff}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:17px/1.45 -apple-system,Inter,Segoe UI,sans-serif}
+h1{margin:0;font-size:30px}h2{margin:0 0 10px;font-size:20px;letter-spacing:.3px}small,.mut{color:var(--mut)}
+header{display:flex;align-items:center;gap:18px;padding:14px 24px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.sub{color:var(--mut);font-size:16px}.grow{flex:1}
+.apps{display:flex;gap:8px;flex-wrap:wrap}.app{padding:4px 12px;border-radius:99px;border:1px solid var(--line);font-size:14px;display:flex;gap:6px;align-items:center}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--ok)}.dot.mock{background:var(--ask)}
+button{background:var(--acc);color:#fff;border:0;border-radius:10px;padding:10px 18px;font-size:16px;font-weight:600;cursor:pointer}
+button.ghost{background:transparent;border:1px solid var(--line);color:var(--tx)}button.ok{background:var(--ok);color:#06241a}button.bad{background:#3a2030;color:#ffb4b4}
+button.ver{background:var(--ver)}button:disabled{opacity:.5}
+.big{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;padding:16px 24px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 18px}.stat b{display:block;font-size:38px;line-height:1.1}.stat span{color:var(--mut);font-size:14px}
+main{display:grid;grid-template-columns:340px 1fr 370px;gap:16px;padding:0 24px 24px}
+@media(max-width:1200px){main{grid-template-columns:1fr}.big{grid-template-columns:repeat(2,1fr)}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin-bottom:16px}
+.feed{max-height:420px;overflow:auto;font-size:14px}.ev{padding:6px 0;border-bottom:1px solid #1d2547;animation:in .4s}
+@keyframes in{from{background:#2a3a7a}to{background:transparent}}
+.ag{display:inline-block;padding:1px 8px;border-radius:6px;background:#22306a;font-size:12px;margin-right:6px;font-weight:700}
+.tag{font-size:12px;font-weight:800;padding:2px 8px;border-radius:6px;margin-right:6px}
+.AUTO{background:#12382c;color:var(--ok)}.ASK{background:#3d3215;color:var(--ask)}.VERIFY{background:#2d2250;color:var(--ver)}.BLOCKED{background:#401c1c;color:var(--bad)}
+.row{padding:10px 0;border-bottom:1px solid #1d2547;display:flex;gap:12px;align-items:center}.row .t{flex:1}.why{color:var(--mut);font-size:14px}
+.tl{position:relative}.blk{display:flex;gap:12px;padding:7px 10px;border-left:4px solid var(--acc);background:#10183a;border-radius:8px;margin-bottom:6px}
+.blk.task{border-color:var(--ok)}.blk .tm{width:110px;color:var(--mut);font-variant-numeric:tabular-nums}
+input[type=text]{width:100%;padding:12px;border-radius:10px;border:1px solid var(--line);background:#0e1430;color:var(--tx);font-size:16px}
+.modal{position:fixed;inset:0;background:#000a;display:flex;align-items:center;justify-content:center;z-index:9}.modal>div{background:var(--card);border:1px solid var(--ver);border-radius:16px;padding:28px;width:460px;text-align:center}
+pre{background:#0a0f26;padding:10px;border-radius:8px;overflow:auto;font-size:13px}
+.bar{height:14px;border-radius:8px;background:#26305a;overflow:hidden}.bar>i{display:block;height:100%;background:var(--ok)}
+.pill{font-size:12px;padding:2px 8px;border-radius:6px;margin:2px;display:inline-block}.pass{background:#12382c;color:var(--ok)}.fail{background:#401c1c;color:var(--bad)}
+</style></head>
+<body><div id="root"></div>
+<script src="/static/vendor/react.production.min.js"></script>
+<script src="/static/vendor/react-dom.production.min.js"></script>
+<script src="/static/vendor/htm.umd.js"></script>
+<script>
+const {useState,useEffect,useRef}=React; const html=htm.bind(React.createElement);
+const api=(p,o)=>fetch(p,o).then(r=>r.json().then(j=>({ok:r.ok,...j,_s:r.status})));
+const post=(p)=>api(p,{method:'POST'});
+const tm=s=>new Date(s).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:'America/Los_Angeles'});
+
+function Graph({g}){
+  const nodes=g.nodes||[]; const W=320,H=260,cx=W/2,cy=H/2; const col={person:'#5b8cff',event:'#38d39f',preference:'#ffc857',task:'#ff9f6b',lesson:'#b58cff'};
+  const pos={}; nodes.forEach((n,i)=>{ if(n.id==='maya'){pos[n.id]=[cx,cy];return} const k=i-1,a=k*2.4,r=60+(k%3)*28; pos[n.id]=[cx+Math.cos(a)*r*1.25,cy+Math.sin(a)*r*0.9]});
+  return html`<svg width="100%" viewBox="0 0 ${W} ${H}">${(g.edges||[]).map((e,i)=>html`<line key=${i} x1=${pos[e.from]?.[0]} y1=${pos[e.from]?.[1]} x2=${pos[e.to]?.[0]} y2=${pos[e.to]?.[1]} stroke="#2c3869"/>`)}
+  ${nodes.map(n=>html`<g key=${n.id}><circle cx=${pos[n.id][0]} cy=${pos[n.id][1]} r=${n.id==='maya'?13:6} fill=${col[n.kind]||'#888'}><title>${n.label}</title></circle>${(n.id==='maya'||n.kind==='preference'||n.kind==='task'||n.kind==='lesson')?html`<text x=${pos[n.id][0]+9} y=${pos[n.id][1]+4} fill="#9aa6d6" font-size="9">${n.label.slice(0,26)}</text>`:null}</g>`)}</svg>`;
+}
+
+function Persona({task,onDone,onClose}){
+  const [st,setSt]=useState('starting'); const iid=useRef(null);
+  useEffect(()=>{let stop=false;(async()=>{const r=await post(`/verify/${task.id}/start`); iid.current=r.id; setSt('pending');
+    while(!stop){await new Promise(r=>setTimeout(r,1000)); const s=await api(`/verify/${iid.current}/status?tid=${task.id}`); if(s.status==='completed'){setSt('ok');setTimeout(onDone,900);return}
+      if(['failed','declined','expired'].includes(s.status)){setSt('fail');return}}})();return()=>{stop=true}},[]);
+  return html`<div class="modal"><div><div style=${{fontSize:46}}>🛡️</div><h2>Identity check (Persona)</h2>
+  <p class="mut">${task.title}</p>
+  ${st==='ok'?html`<h2 style=${{color:'var(--ok)'}}>Verified ✓</h2>`:st==='fail'?html`<h2 style=${{color:'var(--bad)'}}>Verification failed</h2>`:html`<p>Verifying it's really you…</p>`}
+  <button class="ghost" onClick=${onClose}>Close</button> <small style=${{cursor:'pointer',opacity:.4,marginLeft:8}} onClick=${()=>iid.current&&post(`/verify/${iid.current}/simulate`)}>⚡</small></div></div>`;
+}
+
+function App(){
+  const [health,setH]=useState({connectors:[]}); const [plan,setPlan]=useState(null); const [brief,setBrief]=useState(null); const [m,setM]=useState({});
+  const [events,setEv]=useState([]); const [graph,setG]=useState({}); const [txt,setTxt]=useState(''); const [running,setRun]=useState(false);
+  const [ver,setVer]=useState(null); const [fd,setFd]=useState(null); const [sre,setSre]=useState(null); const [msg,setMsg]=useState('');
+  const load=async()=>{const p=await api('/plan'); setPlan(p.plan); setBrief(p.brief); setM(p.metrics||{}); setRun(p.running); setG(await api('/memory/graph'))};
+  useEffect(()=>{api('/health').then(setH);load();
+    const es=new EventSource('/events'); es.onmessage=e=>{const ev=JSON.parse(e.data); setEv(x=>[...x.slice(-80),ev]); if(ev.step==='run_complete'||ev.step==='ingest'||ev.step==='preference')load(); if(ev.step==='start')setRun(true); if(ev.step==='run_complete')setRun(false)}; return()=>es.close()},[]);
+  const tasks=plan?plan.tasks:[]; const by=s=>tasks.filter(t=>t.status===s);
+  const done=by('done'), needs=tasks.filter(t=>t.status==='needs_you'&&t.action_type!=='work'), blocked=by('blocked');
+  const act=async(p)=>{const r=await post(p); if(!r.ok)setMsg(r.detail||'error'); load()};
+  const feedEnd=useRef(); useEffect(()=>{feedEnd.current?.scrollIntoView({block:'end'})},[events.length]);
+  const tag=t=>t.status==='blocked'?'BLOCKED':t.decision;
+  return html`<div>
+  <header><h1>🌙 Overnight</h1><span class="sub">Plans your tomorrow while you sleep — and quietly does the boring stuff.</span><span class="grow"/>
+   <div class="apps">${(health.connectors||[]).map(c=>html`<span class="app" key=${c.name}><i class=${'dot '+(c.mode==='mock'?'mock':'')}/>${c.name}</span>`)}</div>
+   <button disabled=${running} onClick=${()=>{setEv([]);post('/run-night')}}>${running?'Running…':'▶ Simulate tonight'}</button></header>
+  <div class="big">
+   <div class="stat"><b>${m.auto_done??'–'}</b><span>tasks done for you</span></div>
+   <div class="stat"><b>${m.minutes_saved??'–'} min</b><span>planning & admin saved</span></div>
+   <div class="stat"><b>${m.cost_per_night!=null?'$'+m.cost_per_night.toFixed(3):'–'}</b><span>cost per night</span></div>
+   <div class="stat"><b>${m.small_model_pct!=null?m.small_model_pct+'%':'–'}</b><span>calls handled by small models</span></div></div>
+  <main>
+   <div>
+    <div class="card"><h2>Live agents</h2><div class="feed">${events.length?events.map(e=>html`<div class="ev" key=${e.seq}><span class="ag">${e.agent}</span>${e.decision?html`<span class=${'tag '+e.decision}>${e.decision}</span>`:null}${e.summary}${e.why?html`<div class="why">${e.why}</div>`:null}</div>`):html`<span class="mut">Press “Simulate tonight”.</span>`}<div ref=${feedEnd}/></div></div>
+    <div class="card"><h2>Memory graph <small>(Cognee)</small></h2><${Graph} g=${graph}/><small>${graph.docs||0} documents remembered</small></div>
+   </div>
+   <div>
+    ${!plan?html`<div class="card"><h2>Morning brief</h2><p class="mut">No plan yet. Hit “Simulate tonight” to see what Overnight does while Maya sleeps.</p></div>`:html`
+    <div class="card"><h2>☀️ Morning brief — ${new Date(plan.date+'T12:00').toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric'})}</h2><p>${brief?.greeting}</p><p class="mut">${plan.summary} · planner: ${plan.planner}</p>
+     <div class="tl">${plan.blocks.map((b,i)=>html`<div class=${'blk '+b.kind} key=${i}><span class="tm">${tm(b.start)}–${tm(b.end)}</span><div><b>${b.title}</b>${b.note?html`<div class="why">${b.note}</div>`:null}</div></div>`)}</div></div>
+    <div class="card"><h2>Needs you (${needs.length})</h2>${msg?html`<div class="why" style=${{color:'var(--bad)'}}>${msg}</div>`:null}
+     ${needs.map(t=>html`<div class="row" key=${t.id}><div class="t"><span class=${'tag '+tag(t)}>${tag(t)}</span>${t.title}<div class="why">${t.why}</div></div>
+      ${t.decision==='VERIFY'?html`<button class="ver" onClick=${()=>setVer(t)}>🛡️ Verify & approve</button>`:html`<button class="ok" onClick=${()=>act('/approve/'+t.id)}>Approve</button>`}
+      <button class="bad" onClick=${()=>act('/reject/'+t.id)}>Reject</button></div>`)}${needs.length?null:html`<span class="mut">Nothing needs you 🎉</span>`}</div>
+    <div class="card"><h2>🚫 Blocked for your safety (${blocked.length})</h2>${blocked.map(t=>html`<div class="row" key=${t.id}><div class="t"><span class="tag BLOCKED">BLOCKED</span>${t.title}<div class="why">${t.why}</div></div></div>`)}</div>
+    <div class="card"><h2>Done for you (${done.length})</h2>${done.map(t=>html`<div class="row" key=${t.id}><div class="t"><span class="tag AUTO">AUTO</span>${t.title}<div class="why">${t.why}</div></div><button class="ghost" onClick=${()=>act('/undo/'+t.id)}>Undo</button></div>`)}
+     ${tasks.filter(t=>t.status==='approved'||t.result?.status==='done'&&t.decision!=='AUTO').map(t=>html`<div class="row" key=${t.id}><div class="t"><span class=${'tag '+t.decision}>${t.decision}</span>${t.title} <small>(approved)</small><div class="why">${t.result?.why}</div></div></div>`)}</div>`}
+   </div>
+   <div>
+    <div class="card"><h2>Add a task</h2><input type="text" placeholder="book dentist, I prefer mornings" value=${txt} onInput=${e=>setTxt(e.target.value)} onKeyDown=${e=>{if(e.key==='Enter'&&txt){api('/user-task',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text:txt})}).then(()=>{setTxt('');load()})}}}/>
+     <p class="why">Stored in Cognee. Planned on the next run (“Simulate tonight”).</p></div>
+    <div class="card"><h2>🔥 Firedrill + SRE agent</h2>
+     <button class="ghost" onClick=${async()=>{setSre(null);setFd(await api('/firedrill/run'))}}>Run failure drills</button> <button onClick=${async()=>setSre(await api('/sre/run'))}>SRE: diagnose & fix</button>
+     ${fd?html`<p>Pass rate <b>${Math.round(fd.pass_rate*100)}%</b></p><div class="bar"><i style=${{width:fd.pass_rate*100+'%'}}/></div><div>${fd.results.map(r=>html`<span class=${'pill '+(r.passed?'pass':'fail')} title=${r.root_cause} key=${r.id}>${r.name}</span>`)}</div>`:null}
+     ${sre?html`<p>After SRE patch: <b>${Math.round(sre.pass_rate_after*100)}%</b> (was ${Math.round(sre.pass_rate_before*100)}%)</p><div class="bar"><i style=${{width:sre.pass_rate_after*100+'%'}}/></div><pre>${sre.patch}</pre>`:null}</div>
+   </div></main>
+  ${ver?html`<${Persona} task=${ver} onClose=${()=>setVer(null)} onDone=${async()=>{setVer(null);await act('/approve/'+ver.id)}}/>`:null}</div>`;
+}
+ReactDOM.createRoot(document.getElementById('root')).render(html`<${App}/>`);
+</script></body></html>
