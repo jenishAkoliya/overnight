@@ -1,11 +1,11 @@
 PY=.venv/bin/python
-.PHONY: dev demo live test sie seed smoke oauth ingest
+.PHONY: dev demo live test sie seed smoke oauth ingest ready triage demo-mail demo-mail-send
 dev:
 	$(PY) -m uvicorn backend.app:app --reload --port 8000
 demo:
-	@echo "Overnight demo (Maya's seed) -> http://localhost:8000"; SOURCES_MOCK=1 $(PY) -m uvicorn backend.app:app --port 8000
+	$(PY) scripts/serve.py demo
 live:
-	@echo "LIVE: real Gmail/Calendar + real clock. Writes are DRY_RUN unless you set DRY_RUN=false in .env"; REAL_CLOCK=1 $(PY) -m uvicorn backend.app:app --port 8000
+	$(PY) scripts/serve.py live
 oauth:
 	$(PY) scripts/google_oauth.py
 ingest:
@@ -18,3 +18,11 @@ seed:
 	$(PY) -m backend.seed.build_seed
 smoke:
 	node tests/frontend_smoke.mjs
+ready:
+	REAL_CLOCK=1 $(PY) scripts/readiness.py
+triage:
+	REAL_CLOCK=1 $(PY) scripts/live_triage.py
+demo-mail:
+	$(PY) scripts/send_demo_emails.py
+demo-mail-send:
+	$(PY) scripts/send_demo_emails.py --send

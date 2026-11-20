@@ -72,7 +72,8 @@ def test_retry_then_fail_honestly_and_recovery():
     executor.reset(); faults.configure([{"type": "dependency_unavailable", "service": "gmail"}])
     t = next(t for t in state.tasks.values() if t.action_type == "archive")
     r = executor.execute(t)
-    assert not r.ok and "FAILED" in r.why and r.attempts == 3
+    from backend import runtime
+    assert not r.ok and "FAILED" in r.why and r.attempts == runtime.load("runtime_config.yaml")["retry"]["max_attempts"]
     faults.reset()
     assert executor.execute(t).ok
 

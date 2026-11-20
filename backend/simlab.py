@@ -12,7 +12,7 @@ _lock = threading.Lock()
 
 def _config_label() -> str:
     import hashlib
-    h = hashlib.sha1("".join((runtime.LIVE_DIR / n).read_text() for n in runtime.PATCHABLE if (runtime.LIVE_DIR / n).exists()).encode()).hexdigest()[:6]
+    h = hashlib.sha1("".join((sre_agent.live / n).read_text() for n in runtime.PATCHABLE if (sre_agent.live / n).exists()).encode()).hexdigest()[:6]
     return f"config-{h}"
 
 
@@ -54,3 +54,11 @@ def status() -> dict:
     return {"running": lab["running"], "sre_running": lab["sre_running"], "total": lab["total"], "progress": lab["progress"],
             "latest": runs[-1] if runs else None, "baseline": runs[0] if runs else None, "n_runs": len(runs),
             "sre": sre_agent.last or None, "staged": bool(sre_agent.staged), "history": sre_agent.public_history(), "config": _config_label()}
+
+
+def reset():
+    """Forget previous runs (used when the demo baseline is restored so 'before' is measured fresh)."""
+    with _lock:
+        lab["runs"].clear(); lab["progress"] = []
+    sre_agent.last = {}
+    sre_agent.staged = None

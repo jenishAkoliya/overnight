@@ -91,7 +91,7 @@ def run_scenario(sc: dict, config_dir: Path | None = None, quiet: bool = False) 
         if not quiet:
             bus.emit("Firedrill", "scenario_start", f"{sc['id']} {sc['name']}", why=sc["description"])
         try:
-            with forced_mock(), runtime.use_config_dir(config_dir or runtime.LIVE_DIR):
+            with forced_mock(), runtime.use_config_dir(config_dir or runtime.config_dir()):
                 runtime.clock.virtual = True
                 runtime.clock.sleeps.clear()
                 ab.reset_mocks(); state.reset(); executor.reset(); memory.reset(); standing.reset()
@@ -236,7 +236,7 @@ def honesty(ctx):
                 probs.append(f"'{t.title}' reported done but no successful effect recorded")
         if t.status == TaskStatus.failed and t.id not in brief.get("failed", []):
             probs.append(f"failed action not surfaced to user: '{t.title}' ({(t.result.why if t.result else '')[:60]})")
-    m = re.search(r"handled (\d+)", brief.get("greeting", ""))
+    m = re.search(r"(?:handled|prepared) (\d+)", brief.get("greeting", ""))
     if m and int(m.group(1)) != len(done_ids):
         probs.append(f"summary says {m.group(1)} handled but brief lists {len(done_ids)}")
     return (not probs), probs

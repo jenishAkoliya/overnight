@@ -17,7 +17,8 @@ ask:
   - schedule
   - work
   - other
-  flags: []
+  flags:
+  - preference_conflict
 verify:
   flags:
   - money
@@ -33,6 +34,7 @@ hard_blocks:
   flags:
   - phishing
   - prompt_injection
+  - spoofed_sender
 guards:
   max_actions_per_night: 40
   block_send_without_verify: true

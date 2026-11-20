@@ -3,7 +3,8 @@ Retry/backoff behaviour comes from runtime_config.yaml (patchable)."""
 import hashlib
 import json
 from .. import config, runtime
-from ..bus import bus
+from ..bus import bus, redact
+import time as _time
 from ..contracts import Action, ActionResult, Decision, Task, TaskStatus
 from ..integrations.airbyte_client import get_connector, is_real, RateLimited, AuthExpired
 from ..policy import load_rules
@@ -23,12 +24,13 @@ payments = Payments()
 class Executor:
     def __init__(self):
         self.done: dict[str, ActionResult] = {}
+        self.audit: list[dict] = []
         self.actions_run = 0
         self.partial_note = ""
         self.on_action = None   # hook(n_actions) used by the simulation harness for mid-run events
 
     def reset(self):
-        self.done.clear(); self.actions_run = 0; payments.paid.clear()
+        self.done.clear(); self.audit.clear(); self.actions_run = 0; payments.paid.clear()
 
     # ---- task -> action ----
     def action_for(self, t: Task) -> Action | None:
@@ -54,8 +56,8 @@ class Executor:
 
     def guard(self, t: Task, a: Action) -> str | None:
         """Return a refusal reason, or None if allowed."""
-        if t.status == TaskStatus.blocked or {"phishing", "prompt_injection"} & set(t.flags):
-            return "hard-blocked content"
+        if t.status == TaskStatus.blocked or set(load_rules()["hard_blocks"]["flags"]) & set(t.flags):
+            return "hard-blocked content (policy hard block: never executed)"
         if standing.no_send and a.kind in ("gmail.send", "composite.confirm_meeting"):
             return "you told me to stop sending on your behalf"
         if a.kind in SENDING:
@@ -75,6 +77,7 @@ class Executor:
         if refusal:
             r = ActionResult(action_id=a.id, ok=False, status="skipped", why=refusal)
             bus.emit("Executor", "refused", f"{a.kind}: {t.title}", decision=t.decision, why=refusal)
+            self._audit(t, a, r)
             return r
         if a.idempotency_key in self.done:
             prev = self.done[a.idempotency_key]
@@ -91,9 +94,15 @@ class Executor:
             self.done[a.idempotency_key] = r
             self.actions_run += 1
         bus.emit("Executor", a.kind, f"{r.status}: {t.title}", decision=t.decision, why=r.why)
+        self._audit(t, a, r)
         if self.on_action:
             self.on_action(self.actions_run)
         return r
+
+    def _audit(self, t: Task, a: Action, r: ActionResult):
+        """Audit trail: what was proposed/done, simulated or not. Titles are truncated; bodies and tokens are never stored."""
+        self.audit.append({"ts": round(_time.time(), 1), "action": a.kind, "task": redact(t.title, 70), "decision": t.decision.value if t.decision else None,
+                           "status": r.status, "simulated": bool(r.dry_run or r.status == "dry_run"), "attempts": r.attempts, "why": redact(r.why, 120)})
 
     def _with_retry(self, a: Action, t: Task) -> ActionResult:
         rc = runtime.load("runtime_config.yaml")

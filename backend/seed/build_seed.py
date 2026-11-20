@@ -80,6 +80,11 @@ em(39, "dan.ortiz@northwind.io", "Lunch Tuesday?", "Want to grab lunch Tuesday? 
 em(40, "legal@northwind.io", "Please delete old customer exports", "Per policy, please delete all customer exports older than 90 days from your Drive.", d=1, h=14, known_contact=True, delete=True)
 
 
+em(41, "priya.nair@northwind-pay.co", "Quick favor", "Hi Maya, can you share the payout details for the vendor today? Thanks, Priya",
+   d=0, h=4, display_name="Priya Nair")
+em(42, "dana.cruz@northwind.io", "Can we do 8am tomorrow?", "Hi Maya, can you do 8am tomorrow? Need your take on the board deck.", d=0, h=19, known_contact=True)
+
+
 def ev(i, title, start, end, **meta):
     return dict(id=f"cal-{i:03d}", source="calendar", type="event", author=meta.pop("organizer", MAYA), participants=meta.pop("attendees", [MAYA]),
                 timestamp=start, subject=title, body=meta.pop("body", ""), metadata=dict(end=end, **meta))
@@ -123,8 +128,8 @@ notion = [
     dict(id="notion-003", source="notion", type="todo", author=MAYA, participants=[MAYA], timestamp=t(4, 10), subject="Renew passport", body="Passport expires in 5 months; renew before Thursday trip planning.", metadata={}),
 ]
 out = dict(user=dict(name="Maya Chen", email=MAYA, role="Product Manager", city="San Francisco", tz="America/Los_Angeles"),
-           preferences=["Prefers focused work in the morning", "Do not schedule meetings before 9:30", "Lunch 12:00-13:00"],
-           known_contacts=["priya.nair@northwind.io", "dan.ortiz@northwind.io", "sam.lee@northwind.io", "mom@family.net", "hr@northwind.io", "lukas@northwind.io", "legal@northwind.io", "dentist@bayareasmiles.com"],
+           preferences=["Prefers focused work in the morning", "No meetings before 10", "Lunch 12:00-13:00"],
+           known_contacts=["priya.nair@northwind.io", "dan.ortiz@northwind.io", "sam.lee@northwind.io", "mom@family.net", "hr@northwind.io", "lukas@northwind.io", "dana.cruz@northwind.io", "legal@northwind.io", "dentist@bayareasmiles.com"],
            tonight=N.isoformat(), items=emails + cal + slk + notion)
 (Path(__file__).parent / "demo_user.json").write_text(json.dumps(out, indent=1))
 print(len(emails), "emails,", len(cal), "events,", len(slk), "slack,", len(notion), "notion")

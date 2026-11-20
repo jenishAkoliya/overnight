@@ -12,6 +12,7 @@ from backend.integrations.airbyte_client import connectors_status
 print("connectors:", [(c["name"], c["mode"]) for c in connectors_status()])
 items = IngestAgent().run()
 by = collections.Counter((i.source, i.type) for i in items)
+print("SOURCE ERRORS:", IngestAgent.errors or "none")
 print("items:", dict(by), "| known contacts learned:", len(memory.known_contacts))
 for src in ("gmail", "calendar"):
     xs = [i for i in items if i.source == src][:4]

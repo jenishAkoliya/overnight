@@ -105,7 +105,7 @@ class TriageAgent:
         ent = sig.entities
         val, conf = STAKES[sig.stakes], sig.routine_prob
         def T(**kw):
-            base = dict(id=_id(it.id), source_item_id=it.id, value=val, confidence=conf, people=[it.author], flags=flags,
+            base = dict(id=_id(it.id), source_item_id=it.id, item={"source": it.source, "type": it.type, "author": it.author[:60], "subject": it.subject[:90], "ts": it.timestamp.isoformat()}, value=val, confidence=conf, people=[it.author], flags=flags,
                         signal={"routine": round(sig.routine_prob, 2), "kind": sig.kind, "stakes": sig.stakes, "via": sig.via})
             base.update(kw)
             return Task(**base)
@@ -123,7 +123,7 @@ class TriageAgent:
         s = it.source
         if it.type == "event":
             if "tz_note" in m:
-                return "zurich", T(title=f"Zurich sync lands 08:00 PT (scheduled in CET) - before your 9:30 limit", action_type="schedule", value=Value.medium, confidence=0.7, est_minutes=0)
+                return "zurich", T(title=f"Zurich sync lands 08:00 PT (scheduled in CET) - before your 10:00 limit", action_type="schedule", value=Value.medium, confidence=0.7, est_minutes=0)
             key = "dinner" if "dinner" in subj.lower() else f"rsvp-{subj}"
             return key, T(title=f"Accept recurring: {subj}", action_type="accept_recurring" if m.get("recurring") else "rsvp", confidence=0.9 if m.get("recurring") else 0.84, value=Value.low)
         if s == "notion":

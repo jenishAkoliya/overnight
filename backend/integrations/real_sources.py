@@ -36,6 +36,8 @@ def _d(x):
 
 def _map_error(e: Exception, service: str):
     s = str(e)
+    if "accessNotConfigured" in s or "has not been used in project" in s:
+        return AuthExpired(f"{service}: the {service} API is NOT ENABLED in the Google Cloud project - enable it in Cloud Console > APIs & Services (manual step), then retry")
     code = getattr(getattr(e, "resp", None), "status", None) or getattr(e, "status_code", None)
     if code in (401, 403) or "invalid_grant" in s or "401" in s[:40]:
         return AuthExpired(f"{service}: {s[:120]}")

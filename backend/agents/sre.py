@@ -133,19 +133,28 @@ def diagnose(r, live_cfg: Path) -> list[dict]:
 
 
 class SREAgent:
-    def __init__(self):
+    def __init__(self, live_dir: Path | None = None):
+        self.live_dir = live_dir
         self.history: list[dict] = []     # applied/reverted patch sets
         self.last: dict = {}
         self.staged: dict | None = None   # {dir, patches, diffs}
         self.busy = False
 
     # ---------------- main loop ----------------
+    @property
+    def live(self) -> Path:
+        return self.live_dir or runtime.LIVE_DIR
+
     def run(self, baseline=None) -> dict:
+        with runtime.use_config_dir(self.live):
+            return self._run(baseline)
+
+    def _run(self, baseline=None) -> dict:
         if self.busy:
             return {"status": "busy"}
         self.busy = True
         try:
-            live = runtime.LIVE_DIR
+            live = self.live
             before = baseline or run_all(quiet=True)
             bus.emit("SREAgent", "start", f"Analyzing {sum(not r.passed for r in before)} failing scenario(s) of {len(before)}", why=f"pass rate {_rate(before):.0%}")
             diags = [d for r in before if not r.passed for d in diagnose(r, live)]
@@ -213,7 +222,7 @@ class SREAgent:
     def apply(self) -> dict:
         if not self.staged:
             return {"ok": False, "error": "nothing staged"}
-        live, stage = runtime.LIVE_DIR, Path(self.staged["dir"])
+        live, stage = self.live, Path(self.staged["dir"])
         backup = {n: (live / n).read_text() for n in runtime.PATCHABLE if (live / n).exists()}
         for n in runtime.PATCHABLE:
             if (stage / n).exists() and (stage / n).read_text() != backup.get(n):
@@ -232,12 +241,29 @@ class SREAgent:
         if not entry:
             return {"ok": False, "error": "nothing to revert"}
         for n, txt in entry["backup"].items():
-            (runtime.LIVE_DIR / n).write_text(txt)
+            (self.live / n).write_text(txt)
         entry["status"] = "reverted"
         if self.last:
             self.last["applied"] = False
         bus.emit("SREAgent", "reverted", f"Reverted {entry['id']}", why="live config restored from backup")
         return {"ok": True, "id": entry["id"]}
+
+    def reset_to_baseline(self) -> dict:
+        """DEMO: restore the pre-hardening (first-cut) config so the SRE before/after story can be replayed. Revertible."""
+        base = runtime.LIVE_DIR / "config_baseline"
+        live = self.live
+        backup = {n: (live / n).read_text() for n in runtime.PATCHABLE if (live / n).exists()}
+        diffs = []
+        for n in runtime.PATCHABLE:
+            if (base / n).exists() and (base / n).read_text() != backup.get(n):
+                diffs.append(diff_text(backup.get(n, ""), (base / n).read_text(), n))
+                (live / n).write_text((base / n).read_text())
+        entry = {"id": f"apply-{len(self.history) + 1}", "ts": time.time(), "status": "applied", "backup": backup,
+                 "patches": [{"id": "baseline", "file": "*", "rationale": "DEMO: restore pre-hardening config (retry 3, no preference_conflict ask, spoofed_sender not hard-blocked)", "diff": "".join(diffs)}]}
+        self.history.append(entry)
+        self.staged = None
+        bus.emit("SREAgent", "baseline_reset", "Config reset to pre-hardening baseline (demo)", why="use Revert, or run the SRE agent to re-harden")
+        return {"ok": True, "id": entry["id"], "changed": len(diffs)}
 
     def public_history(self):
         return [{k: v for k, v in h.items() if k != "backup"} for h in self.history]

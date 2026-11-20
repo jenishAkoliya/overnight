@@ -62,6 +62,8 @@ class Task(BaseModel):
     verified: bool = False
     user_added: bool = False
     triage_via: str = "sie"     # sie | llm | rule
+    item: dict[str, Any] = {}      # source item summary {source,type,author,subject,ts} (no body)
+    council: dict[str, Any] = {}   # evidence + specialist opinions + debate + judge
     signal: dict[str, Any] = {}   # raw triage signal {routine, kind, stakes, via}
     priority: int = 50          # 0-100, used to order the needs-you queue
     meta: dict[str, Any] = {}   # action parameters (e.g. meeting details)

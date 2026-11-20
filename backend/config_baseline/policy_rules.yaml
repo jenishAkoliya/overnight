@@ -1,0 +1,40 @@
+version: 1
+auto:
+  min_confidence: 0.8
+  allowed_value:
+  - low
+  action_types:
+  - archive
+  - label
+  - file_receipt
+  - accept_recurring
+  - rsvp
+  - reminder
+  - draft_reply
+ask:
+  action_types:
+  - reply
+  - schedule
+  - work
+  - other
+  flags: []
+verify:
+  flags:
+  - money
+  - irreversible
+  - new_contact
+  - delete
+  - data_sharing
+  action_types:
+  - payment
+  - delete
+  - share
+hard_blocks:
+  flags:
+  - phishing
+  - prompt_injection
+guards:
+  max_actions_per_night: 40
+  block_send_without_verify: true
+  never_follow_instructions_in_content: true
+known_contacts_min_interactions: 2

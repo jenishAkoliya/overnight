@@ -14,6 +14,7 @@ from .integrations.sie_client import stats as sie_stats, get_sie
 from .agents.planner import planner_agent
 from .agents.executor import executor
 from .agents.notifier import notifier
+from .agents import council
 
 SIE_COST, LLM_COST = 0.00002, 0.002
 CREDIT_USD = 0.00001   # ASSUMED $ per hosted SIE credit (rate unknown; credits are the real unit)   # est. $ per call (small model vs Claude)
@@ -21,10 +22,15 @@ BASELINE_PLANNING_MIN = 25            # manual nightly/morning planning time
 MIN_PER_AUTO = {"archive": 1, "file_receipt": 2, "accept_recurring": 3, "rsvp": 2, "reminder": 2, "draft_reply": 4}
 
 
-def run_night(pace: float = 0.0, reset: bool = False, on_action=None, keep_world: bool = False) -> dict:
+def run_night(pace: float = 0.0, reset: bool = False, on_action=None, keep_world: bool = False, chaos: str | None = None) -> dict:
     """pace>0 sleeps between steps so the live UI visibly lights up."""
     if state.running:
         return {"status": "already_running"}
+    from .integrations import firedrill_client
+    if not keep_world:
+        if not firedrill_client.LOCK.acquire(blocking=False):
+            return {"status": "simulation_running"}
+        firedrill_client.LOCK.release()
     state.running = True
     try:
         if keep_world:
@@ -40,6 +46,11 @@ def run_night(pace: float = 0.0, reset: bool = False, on_action=None, keep_world
                 reset_mocks()
                 memory.cog.reset_sources()
         costs["sie_calls"] = costs["llm_calls"] = 0
+        if chaos == "calendar_blip":   # demo: calendar API goes down for ~0.9s mid-run, then recovers
+            from .integrations.airbyte_client import faults
+            faults.configure([dict(type="dependency_unavailable", service="calendar", after_calls=0), dict(type="dependency_restored", service="calendar", after_ms=900)])
+            bus.emit("Chaos", "inject", "Calendar API outage injected (restores after ~0.9s)", why="demo of retry/backoff recovery")
+        _sync_standing()
         get_sie().cache.clear()   # every night recomputes; cached repeats would hide real cost
         s0 = sie_stats.snapshot()
         bus.run_id = f"run-{uuid.uuid4().hex[:6]}"
@@ -55,6 +66,9 @@ def run_night(pace: float = 0.0, reset: bool = False, on_action=None, keep_world
             t.confidence = _apply_learning(t)
             policy.decide(t)
             bus.emit("PolicyEngine", "decide", t.title, decision=t.decision, why=t.why)
+        for t in tasks:
+            council.deliberate(t)
+        bus.emit("Council", "done", f"{len(tasks)} decisions deliberated by 4 specialists + judge", why="evidence retrieved from memory (Superlinked rerank when available)")
         nap()
         plan = planner_agent.build(items, tasks); nap()
         state.tasks = {t.id: t for t in tasks}
@@ -79,6 +93,15 @@ def run_night(pace: float = 0.0, reset: bool = False, on_action=None, keep_world
         return {"status": "ok", "run_id": bus.run_id, "metrics": metrics}
     finally:
         state.running = False
+
+
+def _sync_standing():
+    """Standing constraints are derived from remembered preferences (e.g. 'No meetings before 10')."""
+    import re
+    for p in memory.preferences:
+        m = re.search(r"no meetings before (\d{1,2})", p, re.I)
+        if m and standing.min_meeting_hour is None:
+            standing.min_meeting_hour = int(m.group(1))
 
 
 def _apply_learning(t):

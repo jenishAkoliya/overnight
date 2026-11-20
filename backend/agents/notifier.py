@@ -1,5 +1,6 @@
 """Notifier: morning brief + 'needs you' queue. In-app; email is only ever a draft.
 The brief must match reality: failed and partially-completed actions are listed, never hidden."""
+from .. import config
 from ..bus import bus
 from ..contracts import Plan, TaskStatus
 
@@ -10,7 +11,8 @@ class Notifier:
         needs = sorted((t for t in plan.tasks if t.status == TaskStatus.needs_you and t.action_type != "work"), key=lambda t: -t.priority)
         blocked = [t for t in plan.tasks if t.status == TaskStatus.blocked]
         failed = [t for t in plan.tasks if t.status == TaskStatus.failed]
-        greeting = f"Good morning Maya - I handled {len(done)} things overnight; {len(needs)} need you."
+        verb = "prepared" if config.DRY_RUN else "handled"
+        greeting = f"Good morning Maya - I {verb} {len(done)} things overnight{' (simulated, dry run)' if config.DRY_RUN else ''}; {len(needs)} need you."
         if failed:
             greeting += f" {len(failed)} action(s) FAILED and were not done."
         b = {"date": plan.date.isoformat(), "greeting": greeting,

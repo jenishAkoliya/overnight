@@ -76,3 +76,11 @@ Google OAuth, Slack token, Anthropic key + model choice, SIE mode, Persona sandb
 
 ## Live mode (Phase 1) & safety
 `make demo` = Maya seed (SOURCES_MOCK=1). `make live` = REAL Gmail+Calendar, real clock, mock sources excluded, DRY_RUN=true, hosted SIE blocked for real data (ALLOW_HOSTED_FOR_REAL_DATA=0). `make ingest` = read-only pull. `scripts/live_triage.py` fails if any write reaches a service. UI shows a DRY RUN banner and SIMULATED tags; audit logs/events are redacted (tokens stripped, bodies never logged). Node: system 26.13.0 is too old for Firedrill; project-local Node 24 in .tools/ (scripts/fd wrapper, .nvmrc=24).
+
+## Final polish (hardening + UI)
+- Config HARDENED by default (retry 4 attempts, `preference_conflict` always ASK, `spoofed_sender` hard block); `backend/config_baseline/` keeps the pre-hardening config for the SRE before/after replay (Evaluations -> 'Demo: reset to pre-hardening config'). Local Firedrill: hardened 15/15, baseline 11/15, SRE baseline->15/15 (3 patches).
+- Council (backend/agents/council.py): 4 specialists + judge per task; evidence via Superlinked rerank (keyword fallback); can only escalate AUTO->ASK.
+- UI: white sidebar app (frontend/index.html + app.css + app.js), 8 hash-routed pages; `make smoke` exercises every page. Endpoints added: /sources /settings /audit /readiness; `make ready` = readiness + secret scan.
+- Honest labels: audit separates EXTERNAL writes (real connectors) from sandbox (mock) writes; brief says 'prepared ... (simulated, dry run)'.
+- Calendar: real connector reachable but the Google Cloud project has the Calendar API DISABLED (403 accessNotConfigured) -> surfaced as DEGRADED. Manual step: enable it in Cloud Console.
+- Demo emails: scripts/send_demo_emails.py needs DEMO_RECIPIENT (not configured -> nothing sent).

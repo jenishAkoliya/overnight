@@ -1,5 +1,5 @@
 retry:
-  max_attempts: 3
+  max_attempts: 4
   backoff_s: 0.2
   backoff_factor: 2
   max_backoff_s: 2.0

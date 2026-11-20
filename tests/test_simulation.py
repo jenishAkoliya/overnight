@@ -50,32 +50,36 @@ def test_phishing_scenario_really_blocks():
     assert r.passed and not [e for e in r.evidence["effects"] if e["op"] == "messages.send"]
 
 
+def baseline_dir():
+    d = Path(tempfile.mkdtemp())
+    _copy_config(runtime.LIVE_DIR / "config_baseline", d)
+    return d
+
+
 def test_sre_keeps_good_patch_and_rejects_regressing_patch(monkeypatch):
-    live_before = (runtime.LIVE_DIR / "runtime_config.yaml").read_text()
+    live = baseline_dir()
+    live_before = (live / "runtime_config.yaml").read_text()
     good = dict(file="runtime_config.yaml", op="set", path=["retry", "max_attempts"], value=4, rationale="more retries")
     bad = dict(file="policy_rules.yaml", op="set", path=["hard_blocks", "flags"], value=[], rationale="drop all hard blocks")
-    monkeypatch.setattr(sre_mod, "diagnose", lambda r, live: [{"scenario_id": r.id, "scenario": r.name, "check": "x", "category": "retry_config", "expected": "", "observed": "",
-                                                           "root_cause": "t", "patch": good if r.id == "s05" else (bad if r.id == "s11" else None), "escalate": None}
-                                                          for _ in [0] if not r.passed])
-    agent = SREAgent()
+    monkeypatch.setattr(sre_mod, "diagnose", lambda r, l: [{"scenario_id": r.id, "scenario": r.name, "check": "x", "category": "retry_config", "expected": "", "observed": "",
+                                                          "root_cause": "t", "patch": good if r.id == "s05" else (bad if r.id == "s11" else None), "escalate": None}
+                                                         for _ in [0] if not r.passed])
+    agent = SREAgent(live_dir=live)
     out = agent.run()
     assert [k["value"] for k in out["kept"]] == [4]
     assert out["rejected"] and "regression" in out["rejected"][0]["reason"]
     assert out["pass_after"] > out["pass_before"]
-    assert (runtime.LIVE_DIR / "runtime_config.yaml").read_text() == live_before   # staged, not applied
+    assert (live / "runtime_config.yaml").read_text() == live_before   # staged, not applied
 
 
 def test_sre_real_run_apply_and_revert():
-    agent = SREAgent()
-    snap = {n: (runtime.LIVE_DIR / n).read_text() for n in runtime.PATCHABLE if (runtime.LIVE_DIR / n).exists()}
-    try:
-        out = agent.run()
-        assert out["pass_after"] >= out["pass_before"] and out["kept"]
-        assert all(p["file"] in runtime.PATCHABLE and not p["file"].endswith(".py") for p in out["kept"])
-        agent.apply()
-        assert sum(r.passed for r in run_all(quiet=True)) == out["pass_after"]
-        agent.revert()
-        assert {n: (runtime.LIVE_DIR / n).read_text() for n in snap} == snap
-    finally:
-        for n, t in snap.items():
-            (runtime.LIVE_DIR / n).write_text(t)
+    live = baseline_dir()
+    agent = SREAgent(live_dir=live)
+    snap = {n: (live / n).read_text() for n in runtime.PATCHABLE if (live / n).exists()}
+    out = agent.run()
+    assert out["pass_before"] == 11 and out["pass_after"] == 15 and len(out["kept"]) == 3
+    assert all(p["file"] in runtime.PATCHABLE and not p["file"].endswith(".py") for p in out["kept"])
+    agent.apply()
+    assert sum(r.passed for r in run_all(config_dir=live, quiet=True)) == 15
+    agent.revert()
+    assert {n: (live / n).read_text() for n in snap} == snap

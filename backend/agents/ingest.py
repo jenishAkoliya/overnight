@@ -5,8 +5,11 @@ from ..integrations.airbyte_client import REGISTRY, get_connector, connectors_st
 
 
 class IngestAgent:
+    errors: dict[str, str] = {}   # source -> last fetch error (surfaced in /health, UI and readiness)
+
     def run(self) -> list[SourceItem]:
         items: list[SourceItem] = []
+        IngestAgent.errors = {}
         for name in REGISTRY:
             if config.REAL_CLOCK and next(c["mode"] for c in connectors_status() if c["name"] == name) == "mock":
                 bus.emit("IngestAgent", "skipped", f"{name}: mock source excluded in live mode", why="no credentials; demo data is never mixed into a real run")
@@ -19,6 +22,7 @@ class IngestAgent:
                         from .memory import memory
                         memory.known_contacts |= conn.known_contacts()
                 except Exception as e:  # outage: continue with other sources, report honestly
+                    IngestAgent.errors[name] = str(e)[:200]
                     bus.emit("IngestAgent", "fetch_failed", f"{name} unavailable: {e}", why="continuing with other sources")
                     continue
             mode = next(c["mode"] for c in connectors_status() if c["name"] == name)

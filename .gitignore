@@ -6,3 +6,4 @@ __pycache__/
 .DS_Store
 node_modules/
 .tools/
+.test_status.json

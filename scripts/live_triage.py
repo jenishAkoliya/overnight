@@ -14,6 +14,8 @@ from backend.integrations.sie_client import get_sie, stats
 
 print("connectors:", [(c["name"], c["mode"]) for c in connectors_status()])
 r = run_night(reset=True)
+from backend.agents.ingest import IngestAgent
+print("SOURCE ERRORS:", IngestAgent.errors or "none")
 m = r["metrics"]
 print(f"SIE tier: {get_sie().tier()} | hosted calls: {stats.snapshot()['calls']['hosted']} | planner: {state.plan.planner}")
 print(f"tasks={m['tasks']} auto_done(dry-run)={m['auto_done']} needs_you={m['needs_you']} blocked={m['blocked']} verify={m['verify']} failed={m['failed']}")
