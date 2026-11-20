@@ -1,5 +1,6 @@
 """PlannerAgent: tomorrow's time-blocked plan. Claude when key present (Phase 3); deterministic fallback now."""
 from datetime import datetime, time, timedelta, date
+from .. import runtime
 from ..bus import bus
 from ..config import TZ, tomorrow
 from ..contracts import Plan, PlanBlock, SourceItem, Task, TaskStatus
@@ -47,11 +48,20 @@ class PlannerAgent:
             busy_sorted = sorted(busy_sorted + [slot])
             scheduled.add(t.id)
         blocks.sort(key=lambda b: b.start)
-        self._llm = get_llm().complete("plan", json_mode=True)  # mock: None -> deterministic
-        planner = "deterministic" if self._llm is None else "claude"
+        planner = "deterministic"
+        summary = ""
+        llm = get_llm()
+        if hasattr(llm, "json"):   # LLM only WRITES the summary/heads-up; it never moves blocks (no double-booking risk)
+            lines = "\n".join(f"{b.start:%H:%M}-{b.end:%H:%M} {b.title}" + (f" ({b.note})" if b.note else "") for b in blocks)
+            out = llm.json(f"Tomorrow ({d:%A}) schedule:\n{lines}\nPreferences: {'; '.join(ctx['preferences'])}\n"
+                           'Write {"summary": "<=2 friendly sentences for the morning brief", "heads_up": "<=1 sentence about the main risk or conflict, or empty"}.',
+                           system=runtime.read_text("prompts/planner_system.txt"))
+            if out and isinstance(out.get("summary"), str):
+                summary = out["summary"].strip()[:300] + (" Heads-up: " + out["heads_up"].strip()[:200] if isinstance(out.get("heads_up"), str) and out["heads_up"].strip() else "")
+                planner = f"deterministic+{llm.name}"
         bus.emit("PlannerAgent", "plan", f"Built plan for {d:%a %b %d}: {len(blocks)} blocks ({planner})", why="prefs: " + "; ".join(ctx["preferences"][:2]))
         return Plan(date=d, tz=TZ.key, blocks=blocks, tasks=tasks, planner=planner,
-                    summary=f"{sum(1 for b in blocks if b.kind == 'event')} meetings, {len(scheduled)} focus tasks scheduled")
+                    summary=summary or f"{sum(1 for b in blocks if b.kind == 'event')} meetings, {len(scheduled)} focus tasks scheduled")
 
     @staticmethod
     def _find_slot(start, end, dur, busy, morning_only=False):

@@ -25,7 +25,7 @@ Docs in docs/research/{airbyte,cognee,superlinked,persona_arcee,firedrill}.md (t
 |---|---|---|---|---|
 | Airbyte | not yet requested | OSS/local SDK free; Cloud 14-day trial | 0 | MOCK |
 | Cognee | OSS (pip), needs LLM key + embeddings | local | 0 | MOCK |
-| Superlinked SIE | not yet requested (local docker / hosted key) | local free | 0 | MOCK |
+| Superlinked SIE | hosted hackathon key in .env (SIE_API_KEY) | ~2,000,000 credits (balance via GET /v1/usage); calls cost 1-2 credits | ~360 credits per night run (+~1,400 probing) | LIVE hosted -> local -> mock; self-imposed floor 50k credits |
 | Persona | not yet requested (sandbox key + template) | sandbox | 0 | MOCK |
 | Firedrill | not yet requested (event code TOKENSAND = +500 credits) | 500 credits | 0 | MOCK |
 | Arcee | not yet requested (optional LLM) | - | 0 | not used |
@@ -36,7 +36,9 @@ Docs in docs/research/{airbyte,cognee,superlinked,persona_arcee,firedrill}.md (t
 | Ingest / connector registry (gmail, calendar, slack, notion, github, linear) | MOCK (seed) — real in Phase 1 |
 | Executor (idempotency, retry/backoff, DRY_RUN, guards, undo) | REAL logic, MOCK connectors |
 | MemoryAgent / Cognee | MOCK (local store + keyword search, graph for UI) — real in Phase 2 |
-| TriageAgent / SIE | MOCK heuristics (LLM escalation 0.4–0.8 logged, simulated) — real in Phase 3 |
+| TriageAgent / SIE | REAL hosted: GLiNER2.5-Decide (/v1/decisions) + GLiNER extract + Qwen3-Reranker-0.6B priority; confidence = 0.3*model + 0.7*rule prior (weight fixed a priori); 0.4-0.8 escalates to Qwen3.5-4B; falls back hosted->local->mock. Scenario harness always uses mock SIE (deterministic, free) |
+| Hosted generation | Qwen/Qwen3.5-4B via SIE /v1/chat/completions: planner summary (never moves blocks), triage escalation, SRE explanations. (Qwen3-4B-Instruct-2507 is NOT in the hosted catalog; GLM-5.3-Flash:relay returned empty (reasoning ate tokens)) |
+| Embeddings for Cognee | hosted has NO MiniLM: use BAAI/bge-m3 (1024d) at https://api.superlinked.com/v1/embeddings (verified 200, dim 1024). Cognee not wired yet (Phase 2) |
 | PlannerAgent | deterministic (tz-aware, respects prefs); Claude in Phase 3 |
 | PolicyEngine | REAL |
 | Persona | MOCK (passes after 2 s; hidden ⚡ simulate button in modal) |

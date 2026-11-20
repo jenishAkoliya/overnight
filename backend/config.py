@@ -4,7 +4,9 @@ from datetime import datetime, date, timedelta
 from zoneinfo import ZoneInfo
 from pathlib import Path
 
+from dotenv import load_dotenv
 ROOT = Path(__file__).resolve().parent
+load_dotenv(ROOT.parent / ".env")
 TZ = ZoneInfo(os.getenv("USER_TZ", "America/Los_Angeles"))
 DRY_RUN = os.getenv("DRY_RUN", "true").lower() == "true"
 MOCK_MODE = os.getenv("MOCK_MODE", "auto")  # auto | true | false

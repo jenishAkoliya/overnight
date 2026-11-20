@@ -129,6 +129,7 @@ function App(){
    <div class="stat"><b>${m.minutes_saved??'–'} min</b><span>planning & admin saved</span></div>
    <div class="stat"><b>${m.cost_per_night!=null?'$'+m.cost_per_night.toFixed(3):'–'}</b><span>cost per night</span></div>
    <div class="stat"><b>${m.small_model_pct!=null?m.small_model_pct+'%':'–'}</b><span>calls handled by small models</span></div></div>
+  ${m.sie_tier?html`<div class="why" style=${{padding:'0 24px 8px'}} id="cost-panel">Cost panel · Superlinked tier <b>${m.sie_tier}</b>: ${m.sie_hosted_calls||0} hosted + ${m.sie_local_calls||0} local + ${m.sie_mock_calls||0} mock SIE calls · ${m.gen_calls||0} generation calls (small LLM) · ${m.credits_used||0} credits used this night${health.sie&&health.sie.balance!=null?` · ${health.sie.balance.toLocaleString()} credits left`:''}${health.sie&&health.sie.hosted_disabled?html` · <b style=${{color:'var(--bad)'}}>hosted DISABLED: ${health.sie.disabled_reason}</b>`:''}</div>`:null}
   <main>
    <div>
     <div class="card"><h2>Live agents</h2><div class="feed">${events.length?events.map(e=>html`<div class="ev" key=${e.seq}><span class="ag">${e.agent}</span>${e.decision?html`<span class=${'tag '+e.decision}>${e.decision}</span>`:null}${e.summary}${e.why?html`<div class="why">${e.why}</div>`:null}</div>`):html`<span class="mut">Press “Simulate tonight”.</span>`}<div ref=${feedEnd}/></div></div>

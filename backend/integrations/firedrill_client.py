@@ -16,6 +16,7 @@ from ..contracts import CheckResult, ScenarioResult, TaskStatus
 from ..standing import standing
 from ..state import state
 from . import airbyte_client as ab
+from .sie_client import forced_mock
 
 SCEN_DIR = Path(__file__).resolve().parent.parent / "scenarios"
 LOCK = threading.RLock()
@@ -90,7 +91,7 @@ def run_scenario(sc: dict, config_dir: Path | None = None, quiet: bool = False) 
         if not quiet:
             bus.emit("Firedrill", "scenario_start", f"{sc['id']} {sc['name']}", why=sc["description"])
         try:
-            with runtime.use_config_dir(config_dir or runtime.LIVE_DIR):
+            with forced_mock(), runtime.use_config_dir(config_dir or runtime.LIVE_DIR):
                 runtime.clock.virtual = True
                 runtime.clock.sleeps.clear()
                 ab.reset_mocks(); state.reset(); executor.reset(); memory.reset(); standing.reset()

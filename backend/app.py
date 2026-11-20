@@ -18,6 +18,7 @@ from .agents.sre import sre_agent
 from . import service, simlab
 from .integrations.airbyte_client import connectors_status
 from .integrations.persona_client import get_persona
+from .integrations.sie_client import get_sie
 
 FRONT = Path(__file__).resolve().parent.parent / "frontend"
 
@@ -39,7 +40,7 @@ class UserTask(BaseModel):
 @app.get("/health")
 def health():
     return {"ok": True, "mock_mode": config.MOCK_MODE, "dry_run": config.DRY_RUN, "connectors": connectors_status(),
-            "tonight": config.tonight().isoformat(), "runs": state.run_count}
+            "tonight": config.tonight().isoformat(), "runs": state.run_count, "sie": get_sie().health()}
 
 
 @app.get("/plan")
