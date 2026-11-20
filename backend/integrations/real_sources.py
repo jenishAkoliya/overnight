@@ -133,9 +133,12 @@ class RealGmail(_Real):
                             out.add(a.lower())
             return out
         try:
-            return run_async(go())
+            out = run_async(go())
         except Exception:
-            return set()
+            out = set()
+        if os.getenv("DEMO_SELF_SEND", "").lower() == "true":   # synthetic demo colleagues (demo mode only)
+            out |= {"priya.nair@northwind.example", "dana.cruz@northwind.example", "pat@example.test", "jordan.sample@example.test"}
+        return out
 
     @staticmethod
     def _hdr(m: dict, name: str) -> str:
@@ -177,8 +180,20 @@ class RealGmail(_Real):
             meta["receipt"] = True
         if "SENT" in labels:
             meta["direction"] = "sent"
+        demo_self = os.getenv("DEMO_SELF_SEND", "").lower() == "true" and bool(self._hdr(m, "X-Overnight-Seed"))
+        if demo_self:   # demo mode: self-sent mail; the story's sender lives in Reply-To / display name, not From
+            rt = getaddresses([self._hdr(m, "Reply-To")])
+            if rt and rt[0][1]:
+                addr = rt[0][1].lower()
+            if self._hdr(m, "X-Overnight-Known-Contact"):
+                meta["known_contact"] = True
+            meta.pop("direction", None)
         if addr in known:
             meta["known_contact"] = True
+        from .. import runtime
+        for key, pat in (runtime.load("guards_rules.yaml").get("content_signals") or {}).items():
+            if re.search(pat, f"{subject}\n{body}", re.I):
+                meta[key] = True
         if re.search(r"spf=fail|dkim=fail", self._hdr(m, "Authentication-Results"), re.I):
             meta["spf"] = "fail"
         if re.search(r"invitation:|updated invitation:", subject, re.I) or "text/calendar" in str(m.get("payload"))[:3000]:

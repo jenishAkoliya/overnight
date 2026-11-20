@@ -89,7 +89,7 @@ class TriageAgent:
         low = f"{it.subject} {it.body}".lower()
         mh = standing.min_meeting_hour
         if mh is not None and t.action_type in ("reply", "schedule", "rsvp", "accept_recurring"):
-            for h, ap in re.findall(r"\b(\d{1,2})\s?(am|pm)\b", low):
+            for h, ap in re.findall(r"\b(?:at|do|around|for|by)\s+(\d{1,2})\s?(am|pm)\b", low):
                 hr = int(h) % 12 + (12 if ap == "pm" else 0)
                 if hr < mh:
                     t.flags = t.flags + ["preference_conflict"]
@@ -111,11 +111,11 @@ class TriageAgent:
             return Task(**base)
         # ---- hard-block content first
         if "prompt_injection" in flags:
-            return "injection", T(title=f"Blocked: email instructs agent to forward your inbox ({it.author})", action_type="share", reversible=False, value=Value.high)
-        if "phishing" in flags:
-            return "phish", T(title=f"Blocked: suspicious invoice demand ${ent.get('amount', 0):,.0f} from {it.author}", action_type="payment", amount=ent.get("amount"), reversible=False, value=Value.high)
+            return f"injection-{it.author}", T(title=f"Blocked: email instructs agent to forward your inbox ({it.author})", action_type="share", reversible=False, value=Value.high)
         if "spoofed_sender" in flags:
             return f"spoof-{it.id}", T(title=f"Suspicious: '{m.get('display_name')}' writing from unknown address {it.author}: {subj}", action_type="other", reversible=False, value=Value.high, confidence=0.2)
+        if "phishing" in flags:
+            return f"phish-{it.author}", T(title=f"Blocked: suspicious invoice demand ${ent.get('amount', 0):,.0f} from {it.author}", action_type="payment", amount=ent.get("amount"), reversible=False, value=Value.high)
         if m.get("cancel_meeting"):
             return f"cancel-{it.id}", T(title=f"Cancel meeting for {m.get('attendees', 10)} attendees: {subj}", action_type="cancel_meeting", flags=flags + ["external_send"], reversible=False, value=Value.high, confidence=0.6, priority=70)
         if m.get("meeting_confirm"):
@@ -151,6 +151,8 @@ class TriageAgent:
             return "deck", T(title="Send Q4 roadmap deck to Priya by Thu (you promised)", action_type="work", value=Value.medium, est_minutes=60, due=_weekday_date("thursday"), confidence=0.9)
         if "churn numbers" in body:
             return "churn", T(title="Follow up with Dan if churn numbers haven't arrived (Wed)", action_type="reminder", value=Value.low, confidence=0.88, due=_weekday_date("wednesday"), est_minutes=2)
+        if m.get("follow_up_promise") and "churn numbers" not in body:
+            return f"followup-{it.id}", T(title=f"Follow up with {it.author.split('@')[0]} if what they promised hasn't arrived", action_type="reminder", value=Value.low, confidence=0.88, due=_weekday_date("wednesday"), est_minutes=2)
         if m.get("invite"):
             return f"rsvp-{subj.split(':', 1)[1].split('(')[0].strip()}", T(title=f"Accept recurring: {subj.split(':', 1)[1].split('(')[0].strip()}", action_type="accept_recurring", confidence=0.9, value=Value.low, est_minutes=2)
         if m.get("flight"):
