@@ -6,6 +6,16 @@ from contextlib import contextmanager
 from .contracts import AgentEvent
 
 
+import re
+_SECRET = re.compile(r"(ya29\.[\w-]+|1//[\w-]{20,}|GOCSPX-[\w-]+|Bearer\s+[\w.\-]+|xox[abpe]-[\w-]+|sk-[\w-]{16,}|persona_\w+|[A-Za-z0-9_\-]{40,})")
+
+
+def redact(text: str, limit: int = 200) -> str:
+    """Audit-log hygiene: strip token-looking strings and cap length so full email bodies never land in logs."""
+    t = _SECRET.sub("[redacted]", text or "")
+    return t if len(t) <= limit else t[:limit] + "..."
+
+
 class EventBus:
     def __init__(self):
         self.events: list[AgentEvent] = []
@@ -16,8 +26,8 @@ class EventBus:
              latency_ms: int = 0, cost: float = 0.0) -> AgentEvent:
         with self.lock:
             ev = AgentEvent(seq=len(self.events) + 1, ts=datetime.now(timezone.utc), run_id=self.run_id,
-                            agent=agent, step=step, summary=summary,
-                            decision=getattr(decision, "value", decision), why=why,
+                            agent=agent, step=step, summary=redact(summary, 200),
+                            decision=getattr(decision, "value", decision), why=redact(why, 240),
                             latency_ms=latency_ms, cost_estimate=round(cost, 6))
             self.events.append(ev)
         return ev

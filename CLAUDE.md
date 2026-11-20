@@ -27,7 +27,7 @@ Docs in docs/research/{airbyte,cognee,superlinked,persona_arcee,firedrill}.md (t
 | Cognee | OSS (pip), needs LLM key + embeddings | local | 0 | MOCK |
 | Superlinked SIE | hosted hackathon key in .env (SIE_API_KEY) | ~2,000,000 credits (balance via GET /v1/usage); calls cost 1-2 credits | ~360 credits per night run (+~1,400 probing) | LIVE hosted -> local -> mock; self-imposed floor 50k credits |
 | Persona | not yet requested (sandbox key + template) | sandbox | 0 | MOCK |
-| Firedrill | not yet requested (event code TOKENSAND = +500 credits) | 500 credits | 0 | MOCK |
+| Firedrill | CLI 3.0.11 installed project-locally (.tools/, Node 24.22.3; use scripts/fd). NOT signed in: needs browser sign-in at app.firedrill.run + event code TOKENSAND applied by the user | 500 credits | 0 | local harness only |
 | Arcee | not yet requested (optional LLM) | - | 0 | not used |
 
 ## Status per component
@@ -73,3 +73,6 @@ backend/policy_rules.yaml, guards_rules.yaml (phishing/injection patterns, spoof
 
 ## Open questions
 Google OAuth, Slack token, Anthropic key + model choice, SIE mode, Persona sandbox key+template, Firedrill signup/TOKENSAND, GitHub repo to push.
+
+## Live mode (Phase 1) & safety
+`make demo` = Maya seed (SOURCES_MOCK=1). `make live` = REAL Gmail+Calendar, real clock, mock sources excluded, DRY_RUN=true, hosted SIE blocked for real data (ALLOW_HOSTED_FOR_REAL_DATA=0). `make ingest` = read-only pull. `scripts/live_triage.py` fails if any write reaches a service. UI shows a DRY RUN banner and SIMULATED tags; audit logs/events are redacted (tokens stripped, bodies never logged). Node: system 26.13.0 is too old for Firedrill; project-local Node 24 in .tools/ (scripts/fd wrapper, .nvmrc=24).

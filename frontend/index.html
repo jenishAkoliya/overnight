@@ -124,6 +124,7 @@ function App(){
   <header><h1>🌙 Overnight</h1><span class="sub">Plans your tomorrow while you sleep — and quietly does the boring stuff.</span><span class="grow"/>
    <div class="apps">${(health.connectors||[]).map(c=>html`<span class="app" key=${c.name}><i class=${'dot '+(c.mode==='mock'?'mock':'')}/>${c.name}</span>`)}</div>
    <button disabled=${running} onClick=${()=>{setEv([]);post('/run-night')}}>${running?'Running…':'▶ Simulate tonight'}</button></header>
+  ${health.write_policy?html`<div id="mode-banner" style=${{padding:'8px 24px',background:health.dry_run?'#3d3215':'#401c1c',color:health.dry_run?'var(--ask)':'var(--bad)',fontWeight:700}}>${health.dry_run?'🧪 DRY RUN — every action below is SIMULATED; nothing is sent, changed or deleted. ':'⚠️ LIVE WRITES ENABLED. '}Sources: ${(health.live_sources||[]).length?'LIVE ['+health.live_sources.join(', ')+']':'demo data'} · other connectors mock</div>`:null}
   <div class="big">
    <div class="stat"><b>${m.auto_done??'–'}</b><span>tasks done for you</span></div>
    <div class="stat"><b>${m.minutes_saved??'–'} min</b><span>planning & admin saved</span></div>
@@ -145,7 +146,7 @@ function App(){
       <button class="bad" onClick=${()=>act('/reject/'+t.id)}>Reject</button></div>`)}${needs.length?null:html`<span class="mut">Nothing needs you 🎉</span>`}</div>
     ${tasks.some(t=>t.status==='failed')?html`<div class="card" style=${{borderColor:'var(--bad)'}}><h2>⚠️ Failed - NOT done (${tasks.filter(t=>t.status==='failed').length})</h2>${tasks.filter(t=>t.status==='failed').map(t=>html`<div class="row" key=${t.id}><div class="t"><span class="tag BLOCKED">FAILED</span>${t.title}<div class="why">${t.result?.why}</div></div></div>`)}</div>`:null}
     <div class="card"><h2>🚫 Blocked for your safety (${blocked.length})</h2>${blocked.map(t=>html`<div class="row" key=${t.id}><div class="t"><span class="tag BLOCKED">BLOCKED</span>${t.title}<div class="why">${t.why}</div></div></div>`)}</div>
-    <div class="card"><h2>Done for you (${done.length})</h2>${done.map(t=>html`<div class="row" key=${t.id}><div class="t"><span class="tag AUTO">AUTO</span>${t.title}<div class="why">${t.why}</div></div><button class="ghost" onClick=${()=>act('/undo/'+t.id)}>Undo</button></div>`)}
+    <div class="card"><h2>Done for you (${done.length})</h2>${done.map(t=>html`<div class="row" key=${t.id}><div class="t"><span class="tag AUTO">AUTO</span>${t.result&&t.result.dry_run?html`<span class="tag ASK">SIMULATED</span>`:null}${t.title}<div class="why">${t.why}</div></div><button class="ghost" onClick=${()=>act('/undo/'+t.id)}>Undo</button></div>`)}
      ${tasks.filter(t=>t.status==='approved'||t.result?.status==='done'&&t.decision!=='AUTO').map(t=>html`<div class="row" key=${t.id}><div class="t"><span class=${'tag '+t.decision}>${t.decision}</span>${t.title} <small>(approved)</small><div class="why">${t.result?.why}</div></div></div>`)}</div>`}
    </div>
    <div>

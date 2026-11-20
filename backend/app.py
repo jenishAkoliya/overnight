@@ -40,7 +40,8 @@ class UserTask(BaseModel):
 @app.get("/health")
 def health():
     return {"ok": True, "mock_mode": config.MOCK_MODE, "dry_run": config.DRY_RUN, "connectors": connectors_status(),
-            "tonight": config.tonight().isoformat(), "runs": state.run_count, "sie": get_sie().health()}
+            "tonight": config.tonight().isoformat(), "runs": state.run_count, "sie": get_sie().health(), "live_sources": [c["name"] for c in connectors_status() if c["mode"] == "real"],
+            "write_policy": "DRY_RUN: every write is simulated, nothing leaves the machine" if config.DRY_RUN else "LIVE WRITES ENABLED"}
 
 
 @app.get("/plan")

@@ -48,7 +48,7 @@ class EffectsLog:
 
     def add(self, service, op, args, key, ok, error=None, deduped=False) -> dict:
         with self.lock:
-            e = {"seq": len(self.entries) + 1, "service": service, "op": op, "args": {k: v for k, v in (args or {}).items() if k != "idempotency_key"},
+            e = {"seq": len(self.entries) + 1, "service": service, "op": op, "args": {k: (v if not isinstance(v, str) or len(v) <= 80 else v[:80] + "...") for k, v in (args or {}).items() if k not in ("idempotency_key", "body", "raw", "text")},
                  "idempotency_key": key, "ok": ok, "error": error, "deduped": deduped, "t": round(runtime.clock.now(), 3)}
             self.entries.append(e)
             return e

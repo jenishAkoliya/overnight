@@ -1,0 +1,4 @@
+#!/bin/sh
+# Project-local Firedrill CLI (Node 24 from .tools/, system Node untouched)
+D="$(cd "$(dirname "$0")/.." && pwd)/.tools/node_modules/.bin"
+PATH="$D:$PATH" exec "$D/firedrill" "$@"
