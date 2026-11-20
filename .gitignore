@@ -7,3 +7,6 @@ __pycache__/
 node_modules/
 .tools/
 .test_status.json
+.venv-cognee/
+.demo_sent_*
+.cognee_data/

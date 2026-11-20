@@ -234,6 +234,12 @@ def audit():
             "note": "Titles truncated; email bodies, tokens and recipients are never stored."}
 
 
+@app.post("/memory/ask")
+def memory_ask(body: UserTask):
+    from .integrations import cognee_real
+    return cognee_real.ask(body.text)
+
+
 @app.get("/sources")
 def sources():
     from .integrations.airbyte_client import REGISTRY
@@ -246,7 +252,8 @@ def sources():
         out.append({**c, "items_last_ingest": counts.get(c["name"], 0), "error": err,
                     "health": "degraded" if err else ("healthy" if c["mode"] == "real" else "mock (demo data)"),
                     "credentials_needed": list(REGISTRY[c["name"]][1])})
-    return {"sources": out, "sie": get_sie().health(), "dry_run": config.DRY_RUN}
+    from .integrations import cognee_real
+    return {"sources": out, "sie": get_sie().health(), "dry_run": config.DRY_RUN, "cognee": {**cognee_real.status, "enabled": cognee_real.enabled()}}
 
 
 @app.get("/settings")

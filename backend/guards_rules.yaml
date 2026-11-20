@@ -22,9 +22,10 @@ user_intents:
 - handler: plan.defer_work
   pattern: (move|push|shift|reschedule) (everything|all)\b.*\b(monday|tuesday|wednesday|thursday|friday)
 content_signals:
-  money: (premium|renew\w*|invoice|amount due|pay now|payment).{0,80}\$\s?[\d,]+|\$\s?[\d,]+.{0,80}(premium|renew\w*|due|pay
-    now)
+  money: (premium|renew\w*|invoice|amount due|pay now|payment|rent|please pay|pay \$).{0,80}\$\s?[\d,]+|\$\s?[\d,]+.{0,80}(premium|renew\w*|due|pay
+    now|rent)
   data_sharing: (share|send|grant|give).{0,40}(customer list|customer data|client list|drive folder|access to)
   ambiguous_time: (meet|call|chat|sync) (on )?(monday|tuesday|wednesday|thursday|friday)\??(?!.{0,25}\d\s?(am|pm|:))
   cancel_meeting: cancel (tomorrow'?s|the) .{0,40}(meeting|all-hands|review)
   follow_up_promise: (i'?ll|i will) send you .{0,60}by (monday|tuesday|wednesday|thursday|friday)
+  rsvp: \brsvp\b

@@ -1,0 +1,12 @@
+# Facts about the user that shape suggestions (live mode). Edit freely; no secrets here.
+name: Cortona
+role: student
+has_car: false
+city: San Jose, CA
+timezone: America/Los_Angeles
+transport: [VTA bus/light rail, Caltrain, bike, walking]
+transit_buffer_min: 30
+preferences:
+  - No meetings before 10
+  - Prefers studying in the morning
+  - Student budget - look for student discounts

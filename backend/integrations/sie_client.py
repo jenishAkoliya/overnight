@@ -139,6 +139,8 @@ class HTTPSIE:
             if r.status_code == 503 and attempt < retries - 1:      # PROVISIONING cold start
                 time.sleep(min(float(r.headers.get("retry-after", 2)), 15)); continue
             txt = r.text.lower()
+            if r.status_code == 429 and not re.search(r"quota|credit|balance|payment", txt) and attempt < retries - 1:   # rate limit: back off
+                time.sleep(min(float(r.headers.get("retry-after", 1.5 * (attempt + 1)) or 1.5), 10)); continue
             if r.status_code in (401, 402, 403) or (r.status_code == 429 and re.search(r"quota|credit|balance|payment", txt)) or "insufficient" in txt:
                 raise QuotaError(f"{r.status_code} {r.text[:120]}")
             r.raise_for_status()
@@ -177,8 +179,8 @@ class HTTPSIE:
         j = self.post("/v1/embeddings", {"model": EMBED_MODEL, "input": [t[:1500] for t in texts]}, "embed")
         return [d["embedding"] for d in j["data"]]
 
-    def chat(self, messages: list[dict], max_tokens: int = 400) -> str:
-        j = self.post("/v1/chat/completions", {"model": GEN_MODEL, "messages": messages, "max_tokens": max_tokens, "temperature": 0.2}, "generate")
+    def chat(self, messages: list[dict], max_tokens: int = 400, model: str | None = None) -> str:
+        j = self.post("/v1/chat/completions", {"model": model or GEN_MODEL, "messages": messages, "max_tokens": max_tokens, "temperature": 0.2}, "generate")
         with stats.lock:
             stats.gen_calls += 1
         return j["choices"][0]["message"]["content"] or ""
@@ -289,11 +291,11 @@ class Router:
     def embed(self, texts: list[str]):
         return self._try("embed", "embed", texts)
 
-    def chat(self, messages, max_tokens=400):
+    def chat(self, messages, max_tokens=400, model=None):
         if not hosted_available():
             return None
         try:
-            return self.hosted.chat(messages, max_tokens)
+            return self.hosted.chat(messages, max_tokens, model)
         except QuotaError as e:
             disable_hosted(f"quota/credit/auth error: {e}")
         except Exception as e:

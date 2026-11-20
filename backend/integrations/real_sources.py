@@ -137,7 +137,8 @@ class RealGmail(_Real):
         except Exception:
             out = set()
         if os.getenv("DEMO_SELF_SEND", "").lower() == "true":   # synthetic demo colleagues (demo mode only)
-            out |= {"priya.nair@northwind.example", "dana.cruz@northwind.example", "pat@example.test", "jordan.sample@example.test"}
+            out |= {"priya.nair@northwind.example", "dana.cruz@northwind.example", "pat@example.test", "jordan.sample@example.test",
+                    "alex.chen@sjsu-demo.example", "elena.ruiz@sjsu-demo.example", "sam.roommate@example.test", "recruiting@novatech-demo.example", "events@studentunion-demo.example"}
         return out
 
     @staticmethod

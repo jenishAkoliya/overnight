@@ -12,7 +12,9 @@ class Notifier:
         blocked = [t for t in plan.tasks if t.status == TaskStatus.blocked]
         failed = [t for t in plan.tasks if t.status == TaskStatus.failed]
         verb = "prepared" if config.DRY_RUN else "handled"
-        greeting = f"Good morning Maya - I {verb} {len(done)} things overnight{' (simulated, dry run)' if config.DRY_RUN else ''}; {len(needs)} need you."
+        from .advisor import profile as _p
+        who = _p().get("name", "there") if config.REAL_CLOCK else "Maya"
+        greeting = f"Good morning {who} - I {verb} {len(done)} things overnight{' (simulated, dry run)' if config.DRY_RUN else ''}; {len(needs)} need you."
         if failed:
             greeting += f" {len(failed)} action(s) FAILED and were not done."
         b = {"date": plan.date.isoformat(), "greeting": greeting,

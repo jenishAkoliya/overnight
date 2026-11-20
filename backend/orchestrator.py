@@ -50,6 +50,11 @@ def run_night(pace: float = 0.0, reset: bool = False, on_action=None, keep_world
             from .integrations.airbyte_client import faults
             faults.configure([dict(type="dependency_unavailable", service="calendar", after_calls=0), dict(type="dependency_restored", service="calendar", after_ms=900)])
             bus.emit("Chaos", "inject", "Calendar API outage injected (restores after ~0.9s)", why="demo of retry/backoff recovery")
+        if config.REAL_CLOCK:
+            from .agents.advisor import profile as _prof
+            pp = _prof().get("preferences") or []
+            memory.preferences = pp + [p for p in memory.preferences if p.startswith("Maya prefers") is False and p not in pp and p.lower().startswith("prefer")]
+            standing.min_meeting_hour = None
         _sync_standing()
         get_sie().cache.clear()   # every night recomputes; cached repeats would hide real cost
         s0 = sie_stats.snapshot()
@@ -66,8 +71,18 @@ def run_night(pace: float = 0.0, reset: bool = False, on_action=None, keep_world
             t.confidence = _apply_learning(t)
             policy.decide(t)
             bus.emit("PolicyEngine", "decide", t.title, decision=t.decision, why=t.why)
+        from .agents import swarm, advisor
+        prof = advisor.profile()
         for t in tasks:
-            council.deliberate(t)
+            sug, extra = advisor.rule_suggestion(t, prof)
+            t.suggestion = sug
+            t.flags = t.flags + [f for f in extra if f not in t.flags]
+        hive = swarm.run([t for t in tasks if t.status.value != "blocked"])
+        for t in tasks:
+            h = hive.get(t.id)
+            if h and h.get("suggestion") and not t.suggestion:
+                t.suggestion = h["suggestion"]
+            council.deliberate(t, h)
         bus.emit("Council", "done", f"{len(tasks)} decisions deliberated by 4 specialists + judge", why="evidence retrieved from memory (Superlinked rerank when available)")
         nap()
         plan = planner_agent.build(items, tasks); nap()
@@ -86,6 +101,14 @@ def run_night(pace: float = 0.0, reset: bool = False, on_action=None, keep_world
         plan.metrics = metrics
         state.plan = plan
         state.brief = notifier.brief(plan, metrics)
+        try:   # real Cognee knowledge graph, built in the background (never blocks the night)
+            from .integrations import cognee_real
+            from .agents.advisor import facts_text
+            docs = [f"User facts: {facts_text()}. Preferences: {'; '.join(memory.preferences)}."] + [
+                f"From: {i.author}. Date: {i.timestamp:%Y-%m-%d}. Subject: {i.subject}. {i.body[:600]}" for i in items if i.source in ("gmail", "calendar")][:40]
+            cognee_real.remember_async(docs, "overnight")
+        except Exception:
+            pass
         state.run_count += 1
         state.last_summary = metrics
         bus.emit("Scheduler", "run_complete", f"Done: {metrics['auto_done']} auto, {metrics['needs_you']} need you, {metrics['blocked']} blocked",

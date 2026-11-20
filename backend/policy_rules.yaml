@@ -19,6 +19,7 @@ ask:
   - other
   flags:
   - preference_conflict
+  - profile_mismatch
 verify:
   flags:
   - money

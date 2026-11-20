@@ -158,7 +158,7 @@ class TriageAgent:
         if m.get("flight"):
             return it.id, T(title="Add check-in reminder for UA 5HT9QK (Thu 7:05 AM flight)", action_type="reminder", est_minutes=2, due=_weekday_date("wednesday"))
         if m.get("money"):
-            return "insurance", T(title=f"Car insurance renewal +22% (${ent.get('amount', 1284):,.0f}) - pay before Dec 15", action_type="payment", amount=ent.get("amount", 1284.0), flags=flags + ["money"], reversible=False, value=Value.high, due=None, est_minutes=10, confidence=0.55)
+            return f"money-{it.id}", T(title=(f"Car insurance renewal +22% (${ent.get('amount', 1284):,.0f}) - pay before Dec 15" if "insurance renews dec 15 - premium up 22%" in subj.lower() else f"Payment requested: {subj} (${ent.get('amount') or 0:,.0f})"), action_type="payment", amount=ent.get("amount", 1284.0), flags=flags + ["money"], reversible=False, value=Value.high, due=None, est_minutes=10, confidence=0.55)
         if m.get("ambiguous_time"):
             return "meet-thu", T(title="Priya: 'meet Thursday?' - no time given; draft a reply, don't book", action_type="reply", flags=flags + ["external_send"], confidence=0.6, est_minutes=3)
         if m.get("data_sharing"):

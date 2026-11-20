@@ -111,14 +111,22 @@ def judge(t: Task, ops: list[dict]) -> dict:
     return {"final": final, "escalated": escalated, "debate": " ".join(lines), "why": why, "dissent": [o["agent"] for o in dissent]}
 
 
-def deliberate(t: Task) -> dict:
+def deliberate(t: Task, hive: dict | None = None) -> dict:
     ops = specialists(t)
+    if hive:
+        by = {m['agent']: m for m in hive['models']}
+        for o in ops:
+            m = by.get(o['agent'])
+            if m:
+                o.update(model=m['model'], model_vote=m['vote'], model_reason=m['reason'], model_ms=m['latency_ms'])
     ev, via = retrieve(t, use_rerank=(t.decision != Decision.AUTO))
     j = judge(t, ops)
+    if hive and not j['escalated'] and j['final'] == 'AUTO' and hive['objections'] >= hive['quorum']:
+        j.update(final='ASK', escalated=True, why=f"Hive quorum: {hive['objections']} of {hive['total']} Superlinked models objected to automating this.")
     if j["escalated"] and t.decision == Decision.AUTO:   # council can only make things MORE cautious
         t.decision, t.status = Decision.ASK, TaskStatus.needs_you
         t.why = "Council: " + j["why"]
         bus.emit("Council", "escalate", redact(t.title, 80), decision=Decision.ASK, why=j["why"])
     problem = f"{t.action_type.replace('_', ' ')} — {t.title}"
-    t.council = {"problem": redact(problem, 160), "evidence": ev, "retrieval": via, "opinions": ops, **j}
+    t.council = {"problem": redact(problem, 160), "evidence": ev, "retrieval": via, "opinions": ops, "hive": hive or None, **j}
     return t.council

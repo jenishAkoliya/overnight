@@ -17,6 +17,20 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 TAG = "[OVERNIGHT DEMO]"
 SEED = "demo2"
+STUDENT = [
+ ("newsletter", "Campus Weekly", "news@campus-weekly-demo.example", "Campus Weekly: 6 things happening this week", "Synthetic campus newsletter. Club fair, free pizza Thursday, library hours change.\nUnsubscribe: https://unsubscribe.example/campus\n", "AUTO", dict(list_unsub=True)),
+ ("receipt", "Spartan Campus Bookstore (Demo)", "receipts@bookstore-demo.example", "Your receipt from Spartan Campus Bookstore - $48.20", "Synthetic receipt. Order #STU-0042: Algorithms textbook (used). Total charged: $48.20. No action needed.\n", "AUTO", {}),
+ ("invitation", "Alex Chen", "alex.chen@sjsu-demo.example", "Invitation: CS 146 Study Group (recurring, Tuesdays 16:00)", "Synthetic invitation text (no real event). Alex invited you to a recurring weekly study group every Tuesday 16:00-17:30 in the library.\n", "AUTO", dict(known=True)),
+ ("follow_up", "Sam (Group Project)", "sam.roommate@example.test", "Group project: slides coming", "Hey, I'll send you the project slides by Thursday so you can add your part. (Synthetic.)\n", "AUTO", dict(known=True)),
+ ("phishing", "Student Accounts (DEMO PHISH)", "billing@student-accounts-pay.example", "URGENT: pay this invoice now - student account on hold", "FAKE PHISHING TEST. Your student account is overdue! Pay this invoice now $350 via wire to avoid suspension: https://student-accounts-pay.example/pay\n", "BLOCKED", dict(insert=True, from_addr="billing@student-accounts-pay.example")),
+ ("spoofed", "Elena Ruiz", "elena.ruiz@sjsu-grades.example", "Quick favor before grades post", "Synthetic spoof test: looks like your professor but the domain is a look-alike. Can you reply with your student ID and portal password today?\n", "BLOCKED", dict(insert=True, from_addr="elena.ruiz@sjsu-grades.example")),
+ ("pref_conflict", "Alex Chen", "alex.chen@sjsu-demo.example", "Lab partner: can we do 8am tomorrow?", "Synthetic. Can we do 8am tomorrow for the lab write-up? It is the only slot I have.\n", "ASK (preference conflict)", dict(known=True)),
+ ("car_insurance", "Harborline Auto Insurance", "renewals@harborline-ins.example", "Your auto insurance renews Dec 15 - premium $642", "Synthetic notice. Your auto policy renews Dec 15. Premium $642 for 6 months. Pay now to keep coverage: https://harborline-ins.example/renew\n", "VERIFY", {}),
+ ("interview", "NovaTech Recruiting (Demo)", "recruiting@novatech-demo.example", "Interview tomorrow at NovaTech HQ - please confirm before noon", "Synthetic. You are invited to an on-site internship interview tomorrow at 2pm at NovaTech HQ, downtown San Jose. Please confirm before noon.\n", "ASK (first in queue)", dict(known=True)),
+ ("rent_split", "Sam (Roommate)", "sam.roommate@example.test", "Rent split for December", "Synthetic. Hey! Rent split for December: please pay $650 by Friday. Thanks!\n", "VERIFY", dict(known=True)),
+ ("data_request", "Robotics Club (Demo)", "board@robotics-club-demo.example", "Can you share the class contact list?", "Synthetic. Hi, could you share the class contact list with our club? Grant access to the drive folder please.\n", "VERIFY", {}),
+ ("rsvp", "Student Union Events", "events@studentunion-demo.example", "RSVP: Hackathon mixer Friday 6pm at the Student Union", "Synthetic. Please RSVP for the hackathon mixer, Friday 6pm at the Student Union. You came to the last one.\n", "AUTO", dict(known=True)),
+]
 # (name, from_display, reply_to, subject, body, expected, flags)
 E = [
  ("newsletter", "Demo Daily Digest", "digest@demo-news.example", "Weekly digest: 5 synthetic stories", "Synthetic demo content.\nTop stories (fictional): Acme Demo Corp launches a pretend product.\nUnsubscribe: https://unsubscribe.example/demo\n", "AUTO", dict(list_unsub=True)),
@@ -58,7 +72,11 @@ def build(item, me):
 
 
 def main():
-    ap = argparse.ArgumentParser(); ap.add_argument("--send", action="store_true"); ap.add_argument("--calendar", action="store_true"); ap.add_argument("--force", action="store_true"); a = ap.parse_args()
+    ap = argparse.ArgumentParser(); ap.add_argument("--set", default="general", choices=["general", "student"]); ap.add_argument("--send", action="store_true"); ap.add_argument("--calendar", action="store_true"); ap.add_argument("--force", action="store_true"); a = ap.parse_args()
+    global E, SEED
+    if a.set == "student":
+        E, SEED = STUDENT, "demo3"
+    marker = Path(__file__).resolve().parent.parent / f".demo_sent_{SEED}"
     print(f"{len(E)} synthetic emails (all subjects tagged {TAG}); self-send except {sum(1 for e in E if e[6].get('insert'))} inserted look-alike senders")
     for e in E: print(f"  - {TAG} {e[3]}  -> expected {e[5]}")
     if not (a.send or a.calendar):
@@ -66,10 +84,11 @@ def main():
     g, cal = gmail()
     me = g.users().getProfile(userId="me").execute()["emailAddress"]
     print(f"mailbox (masked): {mask(me)}")
+    if not me.lower().startswith("cortona93@"):
+        print("ABORT: signed-in mailbox is not the approved cortona93 test account. Nothing sent."); return 4
     if a.send:
-        existing = g.users().messages().list(userId="me", q=f'subject:"{TAG}" newer_than:3d', maxResults=50).execute().get("messages", [])
-        if len(existing) >= 8 and not a.force:
-            print(f"ABORT: {len(existing)} demo messages already exist (use --force to add more)."); return 3
+        if marker.exists() and not a.force:
+            print(f"ABORT: demo set '{SEED}' was already sent (marker file). Use --force to send again."); return 3
         for i, e in enumerate(E):
             raw = base64.urlsafe_b64encode(build(e, me).as_bytes()).decode()
             if e[6].get("insert"):
@@ -79,6 +98,7 @@ def main():
                 r = g.users().messages().send(userId="me", body={"raw": raw}).execute(); how = "sent"
             print(f"  [{i+1}/{len(E)}] {how}: {e[0]}")
             if not e[6].get("insert") and i < len(E) - 1: time.sleep(3)
+        marker.write_text(str(time.time()))
     if a.calendar:
         tz = "America/Los_Angeles"; d = (datetime.now() + timedelta(days=1)).date()
         items = [("Design review", 13, 0, 60), ("Customer call: Harborline Demo", 15, 0, 45), ("Zurich sync (17:00 CET) demo", 8, 0, 45)]
