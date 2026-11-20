@@ -42,6 +42,7 @@ await waitFor(`document.getElementById('page').innerText.includes('No plan yet')
 // run a night (demo data) via the header button
 await ev(`document.getElementById('run-night').click()`);
 await waitFor(`document.getElementById('page').innerText.includes('Risk summary')`, 'overview after run', 25000);
+await waitFor(`document.getElementById('page').innerText.includes('Write policy')`, 'system health card loads', 10000);
 await shot('overview');
 
 // every route renders with its title
