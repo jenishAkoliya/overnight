@@ -85,7 +85,19 @@ def forced_mock():
         _state["force_mock"] = prev
 
 
+def real_data_active() -> bool:
+    """True when any REAL personal source (Gmail/Calendar/Slack...) feeds the pipeline."""
+    try:
+        from .airbyte_client import any_real_source
+        return any_real_source()
+    except Exception:
+        return False
+
+
 def hosted_available() -> bool:
+    # Privacy: real inbox content is NOT sent to a hosted third party unless explicitly allowed.
+    if real_data_active() and os.getenv("ALLOW_HOSTED_FOR_REAL_DATA") != "1":
+        return False
     return bool(os.getenv("SIE_API_KEY")) and not _state["hosted_disabled"] and not offline() and os.getenv("MOCK_MODE") != "true"
 
 

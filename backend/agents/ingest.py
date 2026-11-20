@@ -9,7 +9,11 @@ class IngestAgent:
         for name in REGISTRY:
             with bus.timed("IngestAgent", "fetch", f"{name}: fetching") as _:
                 try:
-                    got = get_connector(name).fetch()
+                    conn = get_connector(name)
+                    got = conn.fetch()
+                    if hasattr(conn, "known_contacts"):
+                        from .memory import memory
+                        memory.known_contacts |= conn.known_contacts()
                 except Exception as e:  # outage: continue with other sources, report honestly
                     bus.emit("IngestAgent", "fetch_failed", f"{name} unavailable: {e}", why="continuing with other sources")
                     continue

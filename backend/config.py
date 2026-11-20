@@ -14,7 +14,13 @@ MOCK_MODE = os.getenv("MOCK_MODE", "auto")  # auto | true | false
 DEMO_TONIGHT = os.getenv("DEMO_TONIGHT", "2026-12-06T21:00:00-08:00")
 
 
+REAL_CLOCK = os.getenv("REAL_CLOCK", "0") == "1"   # live mode: 'tonight' is the real now
+SOURCES_MOCK = os.getenv("SOURCES_MOCK", "0") == "1"  # force mock SOURCES (Maya's seed) even when keys exist
+
+
 def tonight() -> datetime:
+    if REAL_CLOCK:
+        return datetime.now(TZ)
     return datetime.fromisoformat(DEMO_TONIGHT).astimezone(TZ)
 
 
@@ -33,3 +39,7 @@ def use_mock(*key_names: str) -> bool:
     if MOCK_MODE == "false":
         return False
     return not has_keys(*key_names)
+
+
+def use_mock_sources(*key_names: str) -> bool:
+    return SOURCES_MOCK or use_mock(*key_names)

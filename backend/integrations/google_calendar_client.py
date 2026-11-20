@@ -13,10 +13,15 @@ class MockCalendar(MockSource):
 _cal: MockCalendar | None = None
 
 
-def get_calendar() -> MockCalendar:
+def get_calendar():
     global _cal
     if _cal is None:
-        _cal = MockCalendar()
+        from ..config import use_mock_sources
+        if use_mock_sources("GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REFRESH_TOKEN"):
+            _cal = MockCalendar()
+        else:
+            from .real_sources import RealCalendar
+            _cal = RealCalendar()
     return _cal
 
 

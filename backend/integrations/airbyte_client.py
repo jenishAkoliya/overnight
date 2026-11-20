@@ -6,7 +6,7 @@ import threading
 from pathlib import Path
 from typing import Protocol
 from .. import runtime
-from ..config import use_mock
+from ..config import use_mock_sources
 from ..contracts import SourceItem
 
 SEED = Path(__file__).resolve().parent.parent / "seed" / "demo_user.json"
@@ -195,9 +195,16 @@ _instances: dict[str, Connector] = {}
 
 
 def make(name: str) -> Connector:
-    # Real: airbyte_agent_sdk.connectors.<name> (Phase 1). Mock when keys missing.
+    # Real (airbyte-agent-sdk / Google APIs) when keys exist and sources aren't forced to mock; else mock.
     if name not in _instances:
-        _instances[name] = MOCK.get(name, MockSource)(name)
+        if name == "gmail" and not use_mock_sources(*REGISTRY["gmail"][1]):
+            from .real_sources import RealGmail
+            _instances[name] = RealGmail()
+        elif name == "slack" and not use_mock_sources(*REGISTRY["slack"][1]):
+            from .real_sources import RealSlack
+            _instances[name] = RealSlack()
+        else:
+            _instances[name] = MOCK.get(name, MockSource)(name)
     return _instances[name]
 
 
@@ -221,7 +228,7 @@ def get_connector(name: str) -> Connector:
 
 
 def connectors_status() -> list[dict]:
-    return [{"name": n, "mode": "mock" if use_mock(*keys) else "real", "writable": w} for n, (_, keys, w) in REGISTRY.items()]
+    return [{"name": n, "mode": "mock" if use_mock_sources(*keys) else "real", "writable": w} for n, (_, keys, w) in REGISTRY.items()]
 
 
 def reset_mocks():
@@ -236,4 +243,8 @@ def is_real(system: str) -> bool:
     """True when this system runs against the real API (keys present and MOCK_MODE != true)."""
     if system in ("pay",):
         return False
-    return not use_mock(*REGISTRY[system][1])
+    return not use_mock_sources(*REGISTRY[system][1])
+
+
+def any_real_source() -> bool:
+    return any(not use_mock_sources(*keys) for _, keys, _w in REGISTRY.values())
