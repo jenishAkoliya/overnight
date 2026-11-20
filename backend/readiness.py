@@ -111,9 +111,12 @@ def report(run_sims: bool = True, cli: bool = True) -> dict:
     }
     problems = []
     if not config.DRY_RUN: problems.append("DRY_RUN is off")
-    if real_data_active() and os.getenv("ALLOW_HOSTED_FOR_REAL_DATA") == "1": problems.append("hosted SIE allowed for real data")
+    warnings = []
+    if real_data_active() and os.getenv("ALLOW_HOSTED_FOR_REAL_DATA") == "1":
+        warnings.append("hosted Superlinked allowed for real mail (user-approved for the test mailbox)")
     if not scan["clean"]: problems.append("secrets found in tracked files")
     rep["degraded"] = sorted(rep["source_errors"])
     rep["safety_problems"] = problems
+    rep["warnings"] = warnings
     rep["ready"] = not problems
     return rep
