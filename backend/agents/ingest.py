@@ -1,3 +1,4 @@
+from .. import config
 from ..bus import bus
 from ..contracts import SourceItem
 from ..integrations.airbyte_client import REGISTRY, get_connector, connectors_status
@@ -7,6 +8,9 @@ class IngestAgent:
     def run(self) -> list[SourceItem]:
         items: list[SourceItem] = []
         for name in REGISTRY:
+            if config.REAL_CLOCK and next(c["mode"] for c in connectors_status() if c["name"] == name) == "mock":
+                bus.emit("IngestAgent", "skipped", f"{name}: mock source excluded in live mode", why="no credentials; demo data is never mixed into a real run")
+                continue
             with bus.timed("IngestAgent", "fetch", f"{name}: fetching") as _:
                 try:
                     conn = get_connector(name)
