@@ -1,0 +1,8 @@
+retry:
+  max_attempts: 3
+  backoff_s: 0.2
+  backoff_factor: 2
+  max_backoff_s: 2.0
+  timeout_s: 10
+rate_limit:
+  respect_retry_after: true

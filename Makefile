@@ -1,5 +1,5 @@
 PY=.venv/bin/python
-.PHONY: dev demo test sie seed
+.PHONY: dev demo test sie seed smoke
 dev:
 	$(PY) -m uvicorn backend.app:app --reload --port 8000
 demo:
@@ -10,3 +10,5 @@ sie:
 	docker run --rm -p 8080:8080 -v sie-hf-cache:/app/.cache/huggingface ghcr.io/superlinked/sie-server:latest-cpu-default
 seed:
 	$(PY) -m backend.seed.build_seed
+smoke:
+	node tests/frontend_smoke.mjs

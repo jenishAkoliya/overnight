@@ -62,6 +62,8 @@ class Task(BaseModel):
     verified: bool = False
     user_added: bool = False
     triage_via: str = "sie"     # sie | llm | rule
+    priority: int = 50          # 0-100, used to order the needs-you queue
+    meta: dict[str, Any] = {}   # action parameters (e.g. meeting details)
 
 
 class PlanBlock(BaseModel):
@@ -114,13 +116,27 @@ class AgentEvent(BaseModel):
     cost_estimate: float = 0.0
 
 
+class CheckResult(BaseModel):
+    id: str
+    desc: str
+    type: str
+    category: str = ""
+    passed: bool
+    expected: Any = None
+    observed: Any = None
+    params: dict[str, Any] = {}
+
+
 class ScenarioResult(BaseModel):
     id: str
     name: str
-    passed: bool
-    checks: dict[str, bool] = {}
+    description: str = ""
+    status: str = "pass"          # pass | needs_attention
+    passed: bool = True
+    check_results: list[CheckResult] = []
+    evidence: dict[str, Any] = {}
+    duration_ms: int = 0
     detail: str = ""
-    root_cause: str = ""
 
 
 Task.model_rebuild()

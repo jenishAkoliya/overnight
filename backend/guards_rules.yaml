@@ -1,0 +1,23 @@
+phishing_patterns:
+- pay (this )?invoice now
+- urgent.{0,40}(wire|pay)
+- avoid suspension
+- account is overdue
+injection_patterns:
+- ignore (all )?(previous|prior) instructions
+- forward (your|the) (entire )?inbox
+- system message
+- you are now
+- reveal your (system )?prompt
+spoofing:
+  enabled: true
+  flag: spoofed_sender
+user_intents:
+- handler: preference.add
+  pattern: prefer\w*\s+(the\s+)?(mornings?|afternoons?|evenings?)
+- handler: constraint.min_meeting_hour
+  pattern: no meetings before (\d{1,2})
+- handler: standing.no_send
+  pattern: (don'?t|do not|never|stop) (send|sending|email)
+- handler: plan.defer_work
+  pattern: (move|push|shift|reschedule) (everything|all)\b.*\b(monday|tuesday|wednesday|thursday|friday)

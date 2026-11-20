@@ -34,16 +34,34 @@ class MemoryAgent:
                     self.people.setdefault(p, {"name": p, "n": 0})["n"] += 1
         bus.emit("MemoryAgent", "ingest", f"Remembered {len(items)} items into the life graph (Cognee)")
 
+    PREF_RE = re.compile(r"\bprefer\w*\s+(?:the\s+)?(mornings?|afternoons?|evenings?)", re.I)
+    NOBEFORE_RE = re.compile(r"\bno\s+meetings?\s+before\s+(\d{1,2})(?::(\d\d))?\s*(am|pm)?", re.I)
+
+    @classmethod
+    def parse_preferences(cls, text: str) -> list[str]:
+        prefs = []
+        for m in cls.PREF_RE.finditer(text):
+            prefs.append(f"Maya prefers {m.group(1).lower().rstrip('s')}s")
+        m = cls.NOBEFORE_RE.search(text)
+        if m:
+            hh, mm, ap = int(m.group(1)), m.group(2) or "00", (m.group(3) or "").lower()
+            prefs.append(f"No meetings before {hh}{':' + mm if mm != '00' else ''}{ap}")
+        return prefs
+
     def remember_user_task(self, text: str) -> dict:
-        t = {"id": f"ut-{len(self.user_tasks) + 1}", "text": text}
+        from datetime import datetime, timezone
+        text = " ".join(text.split())
+        t = {"id": f"ut-{len(self.user_tasks) + 1}", "text": text, "source": "user",
+             "created": datetime.now(timezone.utc).isoformat(), "preferences": []}
         self.user_tasks.append(t)
-        self.cog.remember(text, dataset="user_memory", node_set=["user_tasks"])
-        if re.search(r"prefer\w*\s+(the\s+)?(mornings?|afternoons?|evenings?)", text, re.I):
-            m = re.search(r"prefer\w*\s+(the\s+)?(mornings?|afternoons?|evenings?)", text, re.I).group(0)
-            self.preferences.append(f"Maya {m}")
-            self.cog.remember(f"Preference: {m}", dataset="user_memory", node_set=["preferences"])
-            bus.emit("MemoryAgent", "preference", f"Learned preference: {m}")
-        bus.emit("MemoryAgent", "user_task", f"Stored user task: {text}")
+        self.cog.remember(text, dataset="user_memory", node_set=["user_tasks"], meta={"source": "user", "created": t["created"]})
+        for pref in self.parse_preferences(text):
+            if pref not in self.preferences:
+                self.preferences.append(pref)
+                self.cog.remember(f"Preference: {pref}", dataset="user_memory", node_set=["preferences"])
+                bus.emit("MemoryAgent", "preference", f"Learned preference: {pref}", why=f"from your task '{text}'")
+            t["preferences"].append(pref)
+        bus.emit("MemoryAgent", "user_task", f"Stored user task: {text}", why="source=user")
         return t
 
     def record_feedback(self, task_id: str, accepted: bool, reason: str = "", action_type: str = "", author: str = ""):

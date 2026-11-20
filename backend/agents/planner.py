@@ -11,8 +11,8 @@ LUNCH = (time(12, 0), time(13, 0))
 
 
 class PlannerAgent:
-    def build(self, items: list[SourceItem], tasks: list[Task]) -> Plan:
-        d = tomorrow()
+    def build(self, items: list[SourceItem], tasks: list[Task], day=None) -> Plan:
+        d = day or tomorrow()
         ctx = memory.context_for(d)
         blocks: list[PlanBlock] = []
         for it in items:
@@ -37,7 +37,10 @@ class PlannerAgent:
             slot = self._find_slot(cursor, end_of_day, dur, busy_sorted, morning_only=morning and t.user_added)
             if not slot:
                 continue
-            note = "Placed in the morning: you prefer mornings (memory)" if (morning and slot[0].hour < 12) else ""
+            if t.user_added:
+                note = "You asked for this" + ("; you prefer mornings" if morning and slot[0].hour < 12 else "")
+            else:
+                note = "Placed in the morning: you prefer mornings (memory)" if (morning and slot[0].hour < 12) else ""
             if t.due:
                 note = (note + f" Due {t.due:%a %b %d}").strip()
             blocks.append(PlanBlock(start=slot[0], end=slot[1], title=t.title, kind="task", task_id=t.id, note=note))

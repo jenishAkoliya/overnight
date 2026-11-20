@@ -1,5 +1,8 @@
 """TriageAgent: SourceItem -> Task(s) scored by value + confidence via SIE (mock heuristics now)."""
 import hashlib
+import re
+from ..standing import standing
+import re
 from datetime import timedelta
 from ..bus import bus
 from ..contracts import SourceItem, Task, Value
@@ -25,6 +28,15 @@ def _weekday_date(name: str):
             return d + timedelta(days=i)
 
 
+def _user_title(text: str) -> str:
+    """'book dentist, I prefer mornings' -> 'Book dentist' (drop preference clauses)."""
+    t = memory.PREF_RE.sub("", text)
+    t = memory.NOBEFORE_RE.sub("", t)
+    t = re.sub(r"\b(i|and|but)\s*$", "", t.strip(" ,;.-"), flags=re.I).strip(" ,;.-")
+    t = re.split(r"[,;]", t)[0].strip() or text
+    return t[:1].upper() + t[1:]
+
+
 class TriageAgent:
     def run(self, items: list[SourceItem]) -> list[Task]:
         tasks: dict[str, Task] = {}
@@ -45,9 +57,9 @@ class TriageAgent:
             for k in [k for k in tasks if k in low or any(w in low for w in k.split("-")[:1] if len(w) > 4)]:
                 bus.emit("TriageAgent", "merge", f"Your task overrides inferred '{tasks[k].title}'", why="user-added tasks win")
                 tasks.pop(k)
-            title = ut["text"].split(",")[0].strip().capitalize()
-            tasks[ut["id"]] = Task(id=_id(ut["id"] + ut["text"]), title=title, action_type="work", value=Value.medium,
-                                   confidence=0.95, est_minutes=20, user_added=True, why="added by you")
+            title = _user_title(ut["text"])
+            tasks[ut["id"]] = Task(id=_id(ut["id"] + ut["text"]), title=title, source_item_id=ut["id"], action_type="work",
+                                   value=Value.medium, confidence=0.95, est_minutes=20, user_added=True, why="You asked for this")
         n_llm = 0
         for t in tasks.values():
             if 0.4 <= t.confidence <= 0.8 and not t.user_added and not t.flags:
@@ -60,8 +72,28 @@ class TriageAgent:
         return list(tasks.values())
 
     def triage_item(self, it: SourceItem):
+        made = self._triage_item(it)
+        if made:
+            self._annotate(it, made[1])
+        return made
+
+    def _annotate(self, it, t):
+        """Cross-cutting signals: preference conflicts and urgency."""
+        low = f"{it.subject} {it.body}".lower()
+        mh = standing.min_meeting_hour
+        if mh is not None and t.action_type in ("reply", "schedule", "rsvp", "accept_recurring"):
+            for h, ap in re.findall(r"\b(\d{1,2})\s?(am|pm)\b", low):
+                hr = int(h) % 12 + (12 if ap == "pm" else 0)
+                if hr < mh:
+                    t.flags = t.flags + ["preference_conflict"]
+                    t.title += f" [{hr}:00 is before your {mh}:00 limit]"
+                    break
+        if re.search(r"urgent|asap|outage|can'?t log ?in|cannot log ?in|blocking|before noon|right now|down\b", low) and not ({"phishing", "prompt_injection", "spoofed_sender"} & set(t.flags)):
+            t.priority = 95
+
+    def _triage_item(self, it: SourceItem):
         m, subj, body = it.metadata, it.subject, it.body
-        flags = scan(subj, body, m)
+        flags = scan(subj, body, m, author=it.author, known_contacts=memory.known_contacts)
         costs["sie_calls"] += 1
         sig = get_sie().signal(f"{subj}\n{body}", m)
         ent = sig.entities
@@ -75,6 +107,12 @@ class TriageAgent:
             return "injection", T(title=f"Blocked: email instructs agent to forward your inbox ({it.author})", action_type="share", reversible=False, value=Value.high)
         if "phishing" in flags:
             return "phish", T(title=f"Blocked: suspicious invoice demand ${ent.get('amount', 0):,.0f} from {it.author}", action_type="payment", amount=ent.get("amount"), reversible=False, value=Value.high)
+        if "spoofed_sender" in flags:
+            return f"spoof-{it.id}", T(title=f"Suspicious: '{m.get('display_name')}' writing from unknown address {it.author}: {subj}", action_type="other", reversible=False, value=Value.high, confidence=0.2)
+        if m.get("cancel_meeting"):
+            return f"cancel-{it.id}", T(title=f"Cancel meeting for {m.get('attendees', 10)} attendees: {subj}", action_type="cancel_meeting", flags=flags + ["external_send"], reversible=False, value=Value.high, confidence=0.6, priority=70)
+        if m.get("meeting_confirm"):
+            return f"confirm-{it.id}", T(title=f"Confirm: {m['meeting_confirm']['title']} (post to Slack + add to calendar)", action_type="confirm_meeting", value=Value.medium, confidence=0.9, meta=m["meeting_confirm"], flags=flags + ["external_send"])
         s = it.source
         if it.type == "event":
             if "tz_note" in m:
@@ -136,6 +174,8 @@ class TriageAgent:
             return "mom", T(title="Reply to Mom: dinner Sunday?", action_type="reply", flags=flags + ["external_send"], confidence=0.6, est_minutes=2)
         if "statement" in subj.lower():
             return it.id, T(title=f"File: {subj}", action_type="file_receipt", est_minutes=1)
+        if m.get("known_contact"):
+            return f"reply-{it.id}", T(title=f"Reply to {it.author.split('@')[0]}: {subj}", action_type="reply", flags=flags + ["external_send"], confidence=0.6, est_minutes=5)
         return None
 
 

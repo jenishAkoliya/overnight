@@ -26,6 +26,9 @@ class MockCognee:
     def reset(self):
         self.docs.clear()
 
+    def reset_sources(self, keep=("user_memory",)):
+        self.docs[:] = [d for d in self.docs if d["dataset"] in keep]
+
 
 _c = None
 

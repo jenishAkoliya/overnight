@@ -59,13 +59,62 @@ function Persona({task,onDone,onClose}){
   <button class="ghost" onClick=${onClose}>Close</button> <small style=${{cursor:'pointer',opacity:.4,marginLeft:8}} onClick=${()=>iid.current&&post(`/verify/${iid.current}/simulate`)}>⚡</small></div></div>`;
 }
 
+
+const pct=(a,b)=>b?Math.round(100*a/b)+'%':'–';
+function Evidence({r}){
+  const ev=r.evidence||{};
+  return html`<div style=${{padding:'8px 0'}}>${r.check_results.map(c=>html`<div key=${c.id} class="why" style=${{color:c.passed?'var(--ok)':'var(--bad)'}}>${c.passed?'✓':'✗'} <b>${c.desc}</b>${c.passed?null:html` — expected <i>${String(c.expected)}</i>, observed <i>${String(c.observed)}</i> <span class="tag ASK">${c.category}</span>`}</div>`)}
+   <details><summary class="why">Effects log (${(ev.effects||[]).length}) · events (${(ev.events||[]).length}) · tasks</summary>
+    <pre>${(ev.effects||[]).map(e=>`${String(e.t).padStart(6)}s ${e.ok?'OK  ':'FAIL'} ${e.service}.${e.op} ${e.deduped?'(deduped) ':''}${e.error||''}`).join('\n')||'(no outside effects)'}</pre>
+    <pre>${(ev.tasks||[]).map(t=>`${t.decision} ${t.status} | ${t.title}\n   ${t.result||t.why}`).join('\n')}</pre>
+    <pre>${(ev.events||[]).map(e=>`${e.agent}/${e.step}: ${e.summary}`).join('\n')}</pre></details></div>`;
+}
+function FiredrillPanel(){
+  const [st,setSt]=useState(null); const [open,setOpen]=useState({});
+  const poll=async()=>{try{setSt(await api('/firedrill/status'))}catch(e){}};
+  useEffect(()=>{poll();const t=setInterval(poll,1000);return()=>clearInterval(t)},[]);
+  if(!st)return null;
+  const busy=st.running||st.sre_running; const rows=st.running?st.progress:(st.latest?st.latest.results:[]); const sre=st.sre;
+  const base=st.baseline, last=st.latest;
+  return html`<div class="card" style=${{margin:'0 24px 24px'}}><h2>🔥 Firedrill simulations + SRE agent <small>(local harness; maps 1:1 to Firedrill)</small></h2>
+   <div style=${{display:'flex',gap:10,flexWrap:'wrap',alignItems:'center',marginBottom:12}}>
+    <button disabled=${busy} onClick=${()=>post('/firedrill/run?label='+(st.n_runs?'re-run':'baseline'))}>${st.running?`Running ${st.progress.length}/${st.total}…`:st.n_runs?'↻ Re-run simulations':'▶ Run simulations'}</button>
+    <button disabled=${busy||!st.latest} onClick=${()=>post('/sre/run')}>${st.sre_running?'SRE agent working…':'🛠 Run SRE agent'}</button>
+    ${st.staged?html`<button class="ok" onClick=${()=>post('/sre/apply').then(poll)}>Apply patches</button>`:null}
+    ${st.history.some(h=>h.status==='applied')?html`<button class="bad" onClick=${()=>post('/sre/revert').then(poll)}>Revert last apply</button>`:null}
+    <small class="mut">config ${st.config}</small></div>
+   ${base?html`<div class="big" style=${{padding:0,margin:'0 0 12px'}}>
+     <div class="stat"><b>${base.pass}/${base.total}</b><span>first run (before) · ${pct(base.pass,base.total)}</span></div>
+     <div class="stat"><b style=${{color:last.pass>base.pass?'var(--ok)':'inherit'}}>${last.pass}/${last.total}</b><span>latest run (${st.n_runs>1?'after':'same'}) · ${pct(last.pass,last.total)}</span></div>
+     ${sre?html`<div class="stat"><b>${sre.pass_before}→${sre.pass_after}</b><span>SRE staged result (validated)${sre.applied?' · APPLIED':''}</span></div>`:html`<div class="stat"><b>–</b><span>SRE not run</span></div>`}
+     <div class="stat"><b>${sre?sre.kept.length+'/'+sre.rejected.length+'/'+sre.escalated.length:'–'}</b><span>patches kept / rejected / escalated</span></div></div>`:html`<p class="mut">Runs 15 failure scenarios (outages, 429s, phishing, injection, spoofing, mid-run instructions…) through the real pipeline in isolated worlds. Results are measured, not scripted.</p>`}
+   <div>${rows.map(r=>html`<div key=${r.id} class="row" style=${{display:'block',cursor:'pointer'}} onClick=${()=>setOpen({...open,[r.id]:!open[r.id]})}>
+     <span class=${'tag '+(r.passed?'AUTO':'BLOCKED')}>${r.passed?'✓ PASS':'✗ FAIL'}</span><b>${r.id} ${r.name}</b> <small class="mut">${r.duration_ms} ms</small>
+     ${r.passed?null:html`<div class="why" style=${{color:'var(--bad)'}}>${r.check_results.filter(c=>!c.passed).map(c=>c.desc).join(' · ')}</div>`}
+     ${open[r.id]?html`<${Evidence} r=${r}/>`:null}</div>`)}</div>
+   ${sre?html`<h2 style=${{marginTop:18}}>SRE agent report <small>(${sre.diagnoser} diagnoser)</small></h2>
+    ${sre.kept.map(k=>html`<div key=${k.id} class="card" style=${{borderColor:'var(--ok)'}}><span class="tag AUTO">KEPT</span><b>${k.file}</b> — ${k.rationale}<div class="why">fixes ${k.gained.join(', ')} · no regressions · ${k.pass_before}→${k.pass_after} passing · category ${k.category}</div><pre>${k.diff}</pre></div>`)}
+    ${sre.rejected.map(k=>html`<div key=${k.id} class="card" style=${{borderColor:'var(--bad)'}}><span class="tag BLOCKED">REJECTED</span><b>${k.file}</b> — ${k.rationale}<div class="why">${k.reason}</div></div>`)}
+    <h2>Diagnoses</h2>${sre.diagnoses.map((d,i)=>html`<div class="row" key=${i} style=${{display:'block'}}><span class="tag ASK">${d.category}</span><b>${d.scenario_id} ${d.scenario}</b><div class="why">${d.root_cause}</div>${d.escalate?html`<div class="why" style=${{color:'var(--ask)'}}>⚠ Escalated to a human (code change): ${d.escalate}</div>`:null}</div>`)}
+    ${sre.lessons.length?html`<div class="why">Lessons stored in memory: ${sre.lessons.join(' | ')}</div>`:null}`:null}
+   ${st.history.length?html`<div class="why" style=${{marginTop:10}}>Patch history: ${st.history.map(h=>h.id+' ('+h.status+', '+h.patches.length+' patches)').join(' · ')}</div>`:null}
+  </div>`;
+}
+
 function App(){
   const [health,setH]=useState({connectors:[]}); const [plan,setPlan]=useState(null); const [brief,setBrief]=useState(null); const [m,setM]=useState({});
   const [events,setEv]=useState([]); const [graph,setG]=useState({}); const [txt,setTxt]=useState(''); const [running,setRun]=useState(false);
-  const [ver,setVer]=useState(null); const [fd,setFd]=useState(null); const [sre,setSre]=useState(null); const [msg,setMsg]=useState('');
+  const [ver,setVer]=useState(null); const [fd,setFd]=useState(null); const [sre,setSre]=useState(null); const [msg,setMsg]=useState(''); const [utasks,setUt]=useState([]); const [prefs,setPrefs]=useState([]); const [toast,setToast]=useState(null); const [addErr,setAddErr]=useState(''); const [adding,setAdding]=useState(false); const [chip,setChip]=useState([]);
+  const loadUt=async()=>{try{const r=await api('/user-tasks'); setUt(r.tasks||[]); setPrefs(r.preferences||[])}catch(e){}};
+  const showToast=(t)=>{setToast(t); setTimeout(()=>setToast(null),4000)};
+  const addTask=async()=>{const text=txt.trim(); if(adding)return; setAddErr(''); if(!text){setAddErr('Please type a task first');return}
+    setAdding(true); try{const r=await api('/user-task',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text})});
+      if(!r.ok){setAddErr(typeof r.detail==='string'?r.detail:(r.detail&&r.detail[0]&&r.detail[0].msg)||('Server error '+r._s))}
+      else{setTxt(''); setChip(r.preferences||[]); showToast('Saved to memory • will be planned tonight'); await loadUt(); load()}}
+    catch(e){setAddErr('Could not reach the server: '+e.message)} finally{setAdding(false)}};
   const load=async()=>{const p=await api('/plan'); setPlan(p.plan); setBrief(p.brief); setM(p.metrics||{}); setRun(p.running); setG(await api('/memory/graph'))};
-  useEffect(()=>{api('/health').then(setH);load();
-    const es=new EventSource('/events'); es.onmessage=e=>{const ev=JSON.parse(e.data); setEv(x=>[...x.slice(-80),ev]); if(ev.step==='run_complete'||ev.step==='ingest'||ev.step==='preference')load(); if(ev.step==='start')setRun(true); if(ev.step==='run_complete')setRun(false)}; return()=>es.close()},[]);
+  useEffect(()=>{api('/health').then(setH);load();loadUt();
+    setTimeout(load,1500); const es=new EventSource('/events'); es.onmessage=e=>{const ev=JSON.parse(e.data); setEv(x=>[...x.slice(-80),ev]); if(ev.step==='run_complete'||ev.step==='ingest'||ev.step==='preference'){load();loadUt()} if(ev.step==='start')setRun(true); if(ev.step==='run_complete')setRun(false)}; return()=>es.close()},[]);
   const tasks=plan?plan.tasks:[]; const by=s=>tasks.filter(t=>t.status===s);
   const done=by('done'), needs=tasks.filter(t=>t.status==='needs_you'&&t.action_type!=='work'), blocked=by('blocked');
   const act=async(p)=>{const r=await post(p); if(!r.ok)setMsg(r.detail||'error'); load()};
@@ -93,18 +142,23 @@ function App(){
      ${needs.map(t=>html`<div class="row" key=${t.id}><div class="t"><span class=${'tag '+tag(t)}>${tag(t)}</span>${t.title}<div class="why">${t.why}</div></div>
       ${t.decision==='VERIFY'?html`<button class="ver" onClick=${()=>setVer(t)}>🛡️ Verify & approve</button>`:html`<button class="ok" onClick=${()=>act('/approve/'+t.id)}>Approve</button>`}
       <button class="bad" onClick=${()=>act('/reject/'+t.id)}>Reject</button></div>`)}${needs.length?null:html`<span class="mut">Nothing needs you 🎉</span>`}</div>
+    ${tasks.some(t=>t.status==='failed')?html`<div class="card" style=${{borderColor:'var(--bad)'}}><h2>⚠️ Failed - NOT done (${tasks.filter(t=>t.status==='failed').length})</h2>${tasks.filter(t=>t.status==='failed').map(t=>html`<div class="row" key=${t.id}><div class="t"><span class="tag BLOCKED">FAILED</span>${t.title}<div class="why">${t.result?.why}</div></div></div>`)}</div>`:null}
     <div class="card"><h2>🚫 Blocked for your safety (${blocked.length})</h2>${blocked.map(t=>html`<div class="row" key=${t.id}><div class="t"><span class="tag BLOCKED">BLOCKED</span>${t.title}<div class="why">${t.why}</div></div></div>`)}</div>
     <div class="card"><h2>Done for you (${done.length})</h2>${done.map(t=>html`<div class="row" key=${t.id}><div class="t"><span class="tag AUTO">AUTO</span>${t.title}<div class="why">${t.why}</div></div><button class="ghost" onClick=${()=>act('/undo/'+t.id)}>Undo</button></div>`)}
      ${tasks.filter(t=>t.status==='approved'||t.result?.status==='done'&&t.decision!=='AUTO').map(t=>html`<div class="row" key=${t.id}><div class="t"><span class=${'tag '+t.decision}>${t.decision}</span>${t.title} <small>(approved)</small><div class="why">${t.result?.why}</div></div></div>`)}</div>`}
    </div>
    <div>
-    <div class="card"><h2>Add a task</h2><input type="text" placeholder="book dentist, I prefer mornings" value=${txt} onInput=${e=>setTxt(e.target.value)} onKeyDown=${e=>{if(e.key==='Enter'&&txt){api('/user-task',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({text:txt})}).then(()=>{setTxt('');load()})}}}/>
-     <p class="why">Stored in Cognee. Planned on the next run (“Simulate tonight”).</p></div>
-    <div class="card"><h2>🔥 Firedrill + SRE agent</h2>
-     <button class="ghost" onClick=${async()=>{setSre(null);setFd(await api('/firedrill/run'))}}>Run failure drills</button> <button onClick=${async()=>setSre(await api('/sre/run'))}>SRE: diagnose & fix</button>
-     ${fd?html`<p>Pass rate <b>${Math.round(fd.pass_rate*100)}%</b></p><div class="bar"><i style=${{width:fd.pass_rate*100+'%'}}/></div><div>${fd.results.map(r=>html`<span class=${'pill '+(r.passed?'pass':'fail')} title=${r.root_cause} key=${r.id}>${r.name}</span>`)}</div>`:null}
-     ${sre?html`<p>After SRE patch: <b>${Math.round(sre.pass_rate_after*100)}%</b> (was ${Math.round(sre.pass_rate_before*100)}%)</p><div class="bar"><i style=${{width:sre.pass_rate_after*100+'%'}}/></div><pre>${sre.patch}</pre>`:null}</div>
+    <div class="card" id="addtask"><h2>Add a task</h2>
+     <div style=${{display:'flex',gap:8}}><input id="task-input" type="text" placeholder="book dentist, I prefer mornings" value=${txt} disabled=${adding} onInput=${e=>setTxt(e.target.value)} onKeyDown=${e=>{if(e.key==='Enter')addTask()}}/><button id="task-add" disabled=${adding} onClick=${addTask}>${adding?'…':'Add'}</button></div>
+     ${addErr?html`<div id="task-error" class="why" style=${{color:'var(--bad)',marginTop:6}}>${addErr}</div>`:null}
+     ${chip.map(c=>html`<span class="pill pass chip-pref" key=${c} style=${{marginTop:8}}>Preference learned: ${c.replace(/^Maya prefers /,'')}</span>`)}
+     <p class="why">Stored in Cognee memory. Press “Simulate tonight” to place it in tomorrow's plan.</p>
+     <h2 style=${{marginTop:12,fontSize:17}}>Your tasks (${utasks.length})</h2>
+     <div id="your-tasks">${utasks.length?utasks.map(u=>html`<div class="row" key=${u.id}><div class="t">${u.text}<div class="why">source: ${u.source} · added ${new Date(u.created).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})}</div>${u.why?html`<div class="why">${u.why}</div>`:null}</div><span class=${'pill '+(u.planned?'pass':'')} style=${{background:u.planned?'':'#3d3215',color:u.planned?'':'var(--ask)'}}>${u.status}</span></div>`):html`<span class="mut">None yet.</span>`}</div>
+     ${prefs.length?html`<div class="why" style=${{marginTop:8}}>Memory: ${prefs.join(' · ')}</div>`:null}</div>
    </div></main>
+  <${FiredrillPanel}/>
+  ${toast?html`<div id="toast" style=${{position:'fixed',bottom:24,right:24,background:'var(--ok)',color:'#06241a',padding:'12px 20px',borderRadius:12,fontWeight:700,zIndex:20}}>${toast}</div>`:null}
   ${ver?html`<${Persona} task=${ver} onClose=${()=>setVer(null)} onDone=${async()=>{setVer(null);await act('/approve/'+ver.id)}}/>`:null}</div>`;
 }
 ReactDOM.createRoot(document.getElementById('root')).render(html`<${App}/>`);

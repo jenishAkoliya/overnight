@@ -1,25 +1,40 @@
-# Editable by the SRE agent (it may only patch this file, retry config, prompts and guards).
 version: 1
 auto:
   min_confidence: 0.8
-  allowed_value: [low]
-  action_types: [archive, label, file_receipt, accept_recurring, rsvp, reminder, draft_reply]
+  allowed_value:
+  - low
+  action_types:
+  - archive
+  - label
+  - file_receipt
+  - accept_recurring
+  - rsvp
+  - reminder
+  - draft_reply
 ask:
-  # always ask for these regardless of score
-  action_types: [reply, schedule, work, other]
+  action_types:
+  - reply
+  - schedule
+  - work
+  - other
+  flags: []
 verify:
-  # Persona step-up required for any of these flags / action types
-  flags: [money, irreversible, new_contact, delete, data_sharing]
-  action_types: [payment, delete, share]
+  flags:
+  - money
+  - irreversible
+  - new_contact
+  - delete
+  - data_sharing
+  action_types:
+  - payment
+  - delete
+  - share
 hard_blocks:
-  # never executed, never approvable without human review; model scores cannot override
-  flags: [phishing, prompt_injection]
+  flags:
+  - phishing
+  - prompt_injection
 guards:
   max_actions_per_night: 40
   block_send_without_verify: true
   never_follow_instructions_in_content: true
-retry:
-  max_attempts: 3
-  backoff_s: 0.2
-  timeout_s: 10
 known_contacts_min_interactions: 2

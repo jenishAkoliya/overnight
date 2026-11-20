@@ -41,9 +41,20 @@ Docs in docs/research/{airbyte,cognee,superlinked,persona_arcee,firedrill}.md (t
 | PolicyEngine | REAL |
 | Persona | MOCK (passes after 2 s; hidden ⚡ simulate button in modal) |
 | Notifier | in-app brief; email only a draft |
-| Firedrill / SRE | CANNED mock (`/firedrill/run`, `/sre/run`) — real in Phase 5 |
+| Firedrill local harness | REAL (local): 15 YAML scenarios (backend/scenarios) run the full pipeline in isolated worlds with fault injection (503/429/401, restore, mid-run user messages) and an effects log. Real Firedrill cloud = Phase 5 (`backend/firedrill_export.py` converts YAML -> native scenario JSON; field names inferred, verify then) |
+| SREAgent | REAL: diagnoses failed checks (rule-based templates; Claude later), patches ONLY yaml/prompt files, validates on a staging copy (all 15 re-run, keep only if pass count rises and nothing regresses), Apply/Revert + history, lessons -> MemoryAgent |
+| Add-a-task | FIXED (UI had no button/feedback; now button+Enter, toast, preference chip, Your tasks list, inline errors) |
 | UI | working (projector-readable) |
 Python 3.12 venv at .venv (system python is 3.15 — outside Cognee's range). Node v26.13.0 (< 26.13.1 required by Firedrill CLI; need to upgrade/nvm before Phase 5). Apple Silicon (arm64): run SIE natively or hosted.
+
+## Patchable config (SRE may edit these, never .py)
+backend/policy_rules.yaml, guards_rules.yaml (phishing/injection patterns, spoofing, user_intents), runtime_config.yaml (retry/backoff/rate-limit), prompts/*.txt. Read through backend/runtime.py (supports a staging dir + virtual clock).
+
+## Simulation results (measured, not scripted)
+- First measurement on the Phase-0 system: 8/15. SRE staged 3 config patches -> 12/15 and ESCALATED 3 scenarios that need code (honesty/partial-write reporting, needs-you prioritization).
+- Lead then fixed those 3 in code (Notifier lists failed actions + sorts by priority; executor reports partial writes) -> baseline 11/15.
+- Current baseline 11/15 (s05 outage-restore, s09 preference conflict, s11 429 burst, s15 spoofed sender fail). SRE: 3 patches kept (retry max_attempts 3->4; policy ask.flags += preference_conflict; hard_blocks += spoofed_sender), 0 rejected, 0 escalated -> 15/15; applying then re-running confirms 15/15. Revert restores baseline.
+- Failing scenarios were NOT engineered: policy/retry/intent values are first-cut choices (retry budget 3 attempts; flags not listed in policy). Scenario thresholds (1s outage, 3x 429 burst) were chosen by us.
 
 ## Decisions log
 - Python 3.12 venv; React+htm vendored (offline demo, no build step).
@@ -56,7 +67,7 @@ Python 3.12 venv at .venv (system python is 3.15 — outside Cognee's range). No
 1 apps connected + memory graph; 2 Simulate tonight (agents light up); 3 Morning brief: plan + Done for you (why) + Needs you; 4 insurance -> Persona -> paid; phishing blocked; 5 add "book dentist, I prefer mornings" -> Simulate again -> morning block; 6 Firedrill pass rate -> SRE patch -> after; 7 cost/night + time saved.
 
 ## Pitch numbers (mock run, Phase 0)
-25 tasks auto-done; 63 min saved/night (25 baseline planning + per-task); $0.007/night; 95% small-model calls; 2 hard-blocked (phishing, injection); 3 VERIFY. Firedrill before/after: canned 12/15 -> 15/15 (replace in Phase 5).
+25 tasks auto-done; 63 min saved/night (25 baseline planning + per-task); $0.007/night; 95% small-model calls; 2 hard-blocked (phishing, injection); 3 VERIFY. Firedrill local before/after: 11/15 -> 15/15 after 3 SRE patches (real, measured; see above).
 
 ## Open questions
 Google OAuth, Slack token, Anthropic key + model choice, SIE mode, Persona sandbox key+template, Firedrill signup/TOKENSAND, GitHub repo to push.

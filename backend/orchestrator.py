@@ -6,6 +6,7 @@ from .bus import bus
 from .contracts import Decision, TaskStatus
 from .policy import PolicyEngine
 from .state import state
+from .standing import standing
 from .agents.ingest import IngestAgent
 from .agents.memory import memory
 from .agents.triage import triage_agent, costs
@@ -18,21 +19,24 @@ BASELINE_PLANNING_MIN = 25            # manual nightly/morning planning time
 MIN_PER_AUTO = {"archive": 1, "file_receipt": 2, "accept_recurring": 3, "rsvp": 2, "reminder": 2, "draft_reply": 4}
 
 
-def run_night(pace: float = 0.0, reset: bool = False) -> dict:
+def run_night(pace: float = 0.0, reset: bool = False, on_action=None, keep_world: bool = False) -> dict:
     """pace>0 sleeps between steps so the live UI visibly lights up."""
     if state.running:
         return {"status": "already_running"}
     state.running = True
     try:
-        if reset:
-            state.reset(); bus.reset(); executor.reset()
-            from .integrations.airbyte_client import reset_mocks
-            reset_mocks(); memory.reset()
+        if keep_world:
+            state.tasks.clear()
         else:
-            state.tasks.clear(); executor.reset()
-            from .integrations.airbyte_client import reset_mocks
-            reset_mocks()
-            memory.cog.reset()
+            if reset:
+                state.reset(); bus.reset(); executor.reset()
+                from .integrations.airbyte_client import reset_mocks
+                reset_mocks(); memory.reset(); standing.reset()
+            else:
+                state.tasks.clear(); executor.reset()
+                from .integrations.airbyte_client import reset_mocks
+                reset_mocks()
+                memory.cog.reset_sources()
         costs["sie_calls"] = costs["llm_calls"] = 0
         bus.run_id = f"run-{uuid.uuid4().hex[:6]}"
         t0 = time.perf_counter()
@@ -50,11 +54,16 @@ def run_night(pace: float = 0.0, reset: bool = False) -> dict:
         nap()
         plan = planner_agent.build(items, tasks); nap()
         state.tasks = {t.id: t for t in tasks}
+        executor.on_action = on_action
         for t in tasks:
             if t.decision == Decision.AUTO:
                 t.result = executor.execute(t)
                 t.status = TaskStatus.done if t.result.ok else TaskStatus.failed
                 nap() if pace else None
+        executor.on_action = None
+        if standing.defer_to and standing.defer_to != plan.date:
+            plan = planner_agent.build(items, tasks, day=standing.defer_to)
+            bus.emit("PlannerAgent", "replan", f"Re-planned for {standing.defer_to:%a %b %d} after your instruction", why="you asked to move work")
         metrics = _metrics(tasks, time.perf_counter() - t0)
         plan.metrics = metrics
         state.plan = plan

@@ -69,7 +69,7 @@ def test_retry_then_fail_honestly_and_recovery():
     from backend import config
     config.DRY_RUN = False
     run_night(reset=True)
-    executor.reset(); faults.down.add("gmail")
+    executor.reset(); faults.configure([{"type": "dependency_unavailable", "service": "gmail"}])
     t = next(t for t in state.tasks.values() if t.action_type == "archive")
     r = executor.execute(t)
     assert not r.ok and "FAILED" in r.why and r.attempts == 3
@@ -117,5 +117,4 @@ def test_metrics_and_endpoints():
     assert c.get("/health").json()["ok"]
     assert c.get("/plan").json()["plan"]["blocks"]
     assert c.get("/memory/graph").json()["nodes"]
-    assert c.post("/firedrill/run").json()["results"]
-    assert c.post("/sre/run").json()["pass_rate_after"] >= c.post("/sre/run").json()["pass_rate_before"]
+    assert c.get("/firedrill/status").json()["total"] == 0

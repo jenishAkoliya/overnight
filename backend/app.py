@@ -14,7 +14,8 @@ from .state import state
 from .orchestrator import run_night
 from .agents.memory import memory
 from .agents.executor import executor
-from .agents.sre import sre_agent, mock_results
+from .agents.sre import sre_agent
+from . import service, simlab
 from .integrations.airbyte_client import connectors_status
 from .integrations.persona_client import get_persona
 
@@ -60,8 +61,30 @@ def post_run_night(sync: bool = False, pace: float = 0.45, reset: bool = False):
 
 @app.post("/user-task")
 def user_task(body: UserTask):
-    t = memory.remember_user_task(body.text)
-    return {"stored": t, "note": "will be planned in the next run (Simulate tonight)"}
+    text = " ".join((body.text or "").split())
+    if not text:
+        raise HTTPException(400, "Please type a task first")
+    if len(text) > 300:
+        raise HTTPException(400, "Task is too long (max 300 characters)")
+    t = memory.remember_user_task(text)
+    return {"stored": t, "preferences": t["preferences"], "note": "Saved to memory - will be planned tonight"}
+
+
+@app.get("/user-tasks")
+def user_tasks():
+    """User-added tasks with their current status (queued, or planned at HH:MM after a run)."""
+    out = []
+    for ut in memory.user_tasks:
+        row = {**ut, "status": "queued for tonight", "why": "", "planned": None}
+        task = next((x for x in state.tasks.values() if x.source_item_id == ut["id"] and x.user_added), None)
+        if task and state.plan:
+            blk = next((b for b in state.plan.blocks if b.task_id == task.id), None)
+            if blk:
+                row.update(status=f"planned {blk.start:%-I:%M %p}", why=blk.note, planned=blk.start.isoformat())
+            else:
+                row.update(status="in plan, no free slot tomorrow", why=task.why)
+        out.append(row)
+    return {"tasks": out, "preferences": [p for p in memory.preferences]}
 
 
 def _task(tid):
@@ -74,23 +97,21 @@ def _task(tid):
 @app.post("/approve/{tid}")
 def approve(tid: str):
     t = _task(tid)
-    if t.status == TaskStatus.blocked:
-        raise HTTPException(403, "hard-blocked: cannot be approved")
-    if t.decision == Decision.VERIFY and not t.verified:
-        raise HTTPException(409, "identity verification required: POST /verify/{id}/start")
-    t.status = TaskStatus.approved
-    t.result = executor.execute(t)
-    t.status = TaskStatus.done if t.result.ok else TaskStatus.failed
-    memory.record_feedback(tid, True, "approved", t.action_type, t.people[0] if t.people else "")
+    try:
+        service.approve_task(t)
+    except service.NotAllowed as e:
+        raise HTTPException(e.code, e.msg)
     return t.model_dump(mode="json")
 
 
 @app.post("/reject/{tid}")
 def reject(tid: str, reason: str = ""):
-    t = _task(tid)
-    t.status = TaskStatus.rejected
-    memory.record_feedback(tid, False, reason or "rejected", t.action_type, t.people[0] if t.people else "")
-    return t.model_dump(mode="json")
+    return service.reject_task(_task(tid), reason).model_dump(mode="json")
+
+
+@app.post("/message")
+def user_message(body: UserTask):
+    return {"handled": service.handle_user_message(body.text)}
 
 
 @app.post("/undo/{tid}")
@@ -146,20 +167,29 @@ def memory_graph():
     return memory.graph()
 
 
-_fd = {"results": None}
-
-
 @app.post("/firedrill/run")
-def firedrill_run():
-    _fd["results"] = mock_results(False)
-    bus.emit("Firedrill", "run", f"{sum(r.passed for r in _fd['results'])}/{len(_fd['results'])} scenarios passed", why="mock-canned (Phase 5)")
-    return {"results": [r.model_dump() for r in _fd["results"]], "pass_rate": sum(r.passed for r in _fd["results"]) / len(_fd["results"])}
+def firedrill_run(label: str = ""):
+    return {"started": simlab.start_suite(label)}
+
+
+@app.get("/firedrill/status")
+def firedrill_status():
+    return simlab.status()
 
 
 @app.post("/sre/run")
 def sre_run():
-    r = sre_agent.run()
-    return {**r, "before": [x.model_dump() for x in r["before"]], "after": [x.model_dump() for x in r["after"]]}
+    return {"started": simlab.start_sre()}
+
+
+@app.post("/sre/apply")
+def sre_apply():
+    return sre_agent.apply()
+
+
+@app.post("/sre/revert")
+def sre_revert():
+    return sre_agent.revert()
 
 
 @app.get("/")
