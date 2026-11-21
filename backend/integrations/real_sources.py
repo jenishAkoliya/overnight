@@ -224,9 +224,11 @@ class RealGmail(_Real):
                 add = [lid] + [x for x in params.get("add_label_ids", []) if not x.startswith("Label_")]
                 return _d(await g.execute("messages", "update", {"message_id": self._rid(params), "add_label_ids": add, "remove_label_ids": params.get("remove_label_ids", [])}))
             if op in ("drafts.create", "messages.send"):
-                orig = _d(await g.execute("messages", "get", {"message_id": self._rid(params), "format": "metadata", "metadata_headers": "From,Subject,Message-ID"}))
+                orig = _d(await g.execute("messages", "get", {"message_id": self._rid(params), "format": "metadata", "metadata_headers": "From,Reply-To,Subject,Message-ID"}))
                 em = EmailMessage()
-                em["To"] = self._hdr(orig, "From")
+                em["To"] = self._hdr(orig, "Reply-To") or self._hdr(orig, "From")   # standard: reply goes to Reply-To when present
+                if self._hdr(orig, "Message-ID"):
+                    em["In-Reply-To"] = self._hdr(orig, "Message-ID"); em["References"] = self._hdr(orig, "Message-ID")
                 subj = self._hdr(orig, "Subject")
                 em["Subject"] = subj if subj.lower().startswith("re:") else f"Re: {subj}"
                 em.set_content(params.get("body") or "(drafted by Overnight)")

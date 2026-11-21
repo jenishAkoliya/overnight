@@ -25,21 +25,23 @@ function useFetch(path,deps=[]){const [d,setD]=useState(null);const [e,setE]=use
   return [d,e,()=>setN(x=>x+1)];}
 
 /* ---------- confirm / verify modal ---------- */
-function ConfirmModal({task,sim,onClose,onDone,notify}){
+function ConfirmModal({task,sim,live,onClose,onDone,notify}){
+  const isReply=['reply','draft_reply'].includes(task.action_type); const [body,setBody]=useState(isReply?'Hi,\n\nThanks for your message — '+(task.suggestion||'happy to help.')+'\n\nBest,\nCortona':'');
   const [st,setSt]=useState(task.decision==='VERIFY'?'needs_verify':'ready'); const [busy,setBusy]=useState(false); const [err,setErr]=useState(''); const iid=useRef(null);
   const verify=async()=>{setSt('verifying');const r=await post('/verify/'+task.id+'/start');iid.current=r.id;
     for(let i=0;i<40;i++){await new Promise(x=>setTimeout(x,1000));const s=await api('/verify/'+iid.current+'/status?tid='+task.id);if(s.status==='completed'){setSt('ready');return}if(['failed','declined','expired'].includes(s.status)){setSt('failed');return}}setSt('failed')};
-  const confirm=async()=>{setBusy(true);setErr('');const r=await post('/approve/'+task.id);setBusy(false);if(!r._ok){setErr(r.detail||'Not allowed');return}notify(sim?'Approved — action simulated (dry run)':'Approved');onDone()};
+  const confirm=async()=>{setBusy(true);setErr('');const r=await post('/approve/'+task.id,isReply?{reply_body:body}:undefined);setBusy(false);if(!r._ok){setErr(r.detail||'Not allowed');return}notify(live?(r.result&&r.result.ok?'Done for real: '+(ACTION[task.action_type]||task.action_type):'Not done: '+(r.result?r.result.why:'error')):sim?'Approved — action simulated (dry run)':'Approved');onDone()};
   const ops=(task.council&&task.council.opinions)||[];
   return html`<div class="scrim" onClick=${onClose}><div class="modal" onClick=${e=>e.stopPropagation()} id="confirm-modal">
     <h2>Confirm proposed action</h2>
-    <div class="strip" style=${{borderRadius:8,margin:'0 0 12px',padding:'8px 12px'}}><b>DRY RUN — No external changes will be made.</b></div>
+    ${live&&task.action_type!=='payment'?html`<div class="err" style=${{margin:'0 0 12px'}}><b>This will make a REAL change</b> on your account when you confirm${task.action_type==='reply'?' — the reply is actually SENT to the sender':''}.</div>`:html`<div class="strip" style=${{borderRadius:8,margin:'0 0 12px',padding:'8px 12px'}}><b>DRY RUN — No external changes will be made.</b></div>`}
     <dl class="kv"><dt>Action</dt><dd><b>${ACTION[task.action_type]||task.action_type}</b></dd><dt>Target</dt><dd>${task.title}</dd><dt>State</dt><dd><${Badge} s=${stateOf(task)}/> <${Simulated} sim=${sim}/></dd>
      <dt>Confidence</dt><dd><${Conf} v=${task.confidence}/></dd><dt>Why it needs you</dt><dd>${task.why}</dd><dt>Risk flags</dt><dd><${Risks} t=${task}/>${(task.flags||[]).filter(f=>RISK.includes(f)).length?null:html`<small>none</small>`}</dd></dl>
     <h3>Policy & council checks</h3>${ops.map(o=>html`<div class="why" key=${o.agent}><b>${o.agent}</b> <${Badge} s=${o.vote==='BLOCK'?'BLOCKED':o.vote}>${o.vote}</${Badge}> ${o.reason}</div>`)}
     ${task.decision==='VERIFY'?html`<h3>Identity verification (Persona)</h3>${st==='needs_verify'?html`<button class="warn" onClick=${verify}>Verify identity</button>`:st==='verifying'?html`<span>Verifying… <small style=${{cursor:'pointer',opacity:.4}} onClick=${()=>iid.current&&post('/verify/'+iid.current+'/simulate')}>(sim)</small></span>`:st==='failed'?html`<${ErrBox} m="Verification failed. Nothing was done."/>`:html`<${Badge} s="AUTO">Verified ✓</${Badge}>`}`:null}
+    ${isReply?html`<h3>Your reply (edit before sending)</h3><textarea id="reply-body" rows="6" style=${{width:'100%',font:'inherit',padding:8,border:'1px solid var(--line2)',borderRadius:6}} value=${body} onInput=${e=>setBody(e.target.value)}/>`:null}
     ${err?html`<${ErrBox} m=${err}/>`:null}
-    <div style=${{display:'flex',gap:8,justifyContent:'flex-end',marginTop:16}}><button onClick=${onClose}>Cancel</button><button class="pri" id="confirm-go" disabled=${busy||st!=='ready'} onClick=${confirm}>${busy?'Working…':sim?'Confirm (simulated)':'Confirm'}</button></div></div></div>`;
+    <div style=${{display:'flex',gap:8,justifyContent:'flex-end',marginTop:16}}><button onClick=${onClose}>Cancel</button><button class="pri" id="confirm-go" disabled=${busy||st!=='ready'} onClick=${confirm}>${busy?'Working…':live&&task.action_type!=='payment'?(task.action_type==='reply'?'Confirm & send':'Confirm & execute'):sim?'Confirm (simulated)':'Confirm'}</button></div></div></div>`;
 }
 
 /* ---------- task drawer ---------- */
@@ -88,6 +90,7 @@ function Overview({d,go}){
       <div class="tl">${d.plan.blocks.length?d.plan.blocks.map((b,i)=>html`<div class="blk" key=${i}><span class="tm">${T(b.start)}–${T(b.end)}</span><div><b>${b.title}</b> ${b.kind==='task'?html`<${Chip} c="focus task"/>`:null}${b.note?html`<div class="why">${b.note}</div>`:null}</div></div>`):html`<${Empty} title="Nothing scheduled">No events or focus tasks for this day.</${Empty}>`}</div></${Card}>
     <${Card} title="Recent activity" right=${html`<button class="sm" onClick=${()=>go('audit')}>Audit log</button>`}>
       ${d.events.length?d.events.slice(-9).reverse().map(e=>html`<div key=${e.seq} style=${{padding:'5px 0',borderBottom:'1px solid var(--line)'}}><${Chip} c=${e.agent} pri=${true}/> ${e.decision?html`<${Badge} s=${e.decision}/> `:null}${e.summary}</div>`):html`<${Empty} title="No activity yet"/>`}</${Card}></div>
+   <${Card} title="Reminders — needs you" right=${html`<small>${(d.rem||[]).filter(r=>r.urgency==='overdue'||r.urgency==='soon').length} due soon or overdue</small>`}><${ReminderList} rs=${d.rem} reload=${d.loadRem} openTask=${d.openTask} limit=${6}/></${Card}>
    <${AskMemory}/></div>`;
 }
 function AskMemory(){const [q,setQ]=useState('Does the user own a car, and how do they get around?');const [r,setR]=useState(null);const [busy,setBusy]=useState(false);
@@ -145,9 +148,9 @@ function Actions({d,sim,openTask,confirm}){
   const status=t=>{const s=stateOf(t);
     if(s==='BLOCKED')return ['BLOCKED','Blocked — will not run'];if(s==='FAILED')return ['FAILED','Failed — NOT done'];if(t.status==='rejected')return ['N','Rejected'];if(t.status==='undone')return ['N','Undone'];
     if(t.status==='needs_you')return ['ASK','Awaiting your approval'];
-    if(t.status==='done'||t.status==='approved')return ['SIM',t.decision==='AUTO'?(sim?'Simulated (dry run)':'Executed'):(sim?'Approved — simulated':'Approved & executed')];return ['N','Planned']};
+    if(t.status==='done'||t.status==='approved')return t.decision==='AUTO'?['SIM',(t.result&&t.result.dry_run)||sim&&!(t.result&&t.result.status==='done')?'Simulated (dry run)':'Simulated in demo sandbox']:(t.result&&t.result.status==='done'&&!t.result.dry_run?['AUTO','Approved — executed']:['SIM','Approved — simulated']);return ['N','Planned']};
   if(!d.plan)return html`<div class="card"><${Empty} title="No proposed actions yet" action=${html`<button class="pri" onClick=${d.run}>Simulate tonight</button>`}/></div>`;
-  return html`<div><div class="card soft" style=${{marginBottom:12}}><b>Nothing here has really executed.</b> <span class="why">${sim?'DRY RUN — every action is a simulation; no external changes will be made.':'Live writes are enabled.'}</span></div>
+  return html`<div><div class="card soft" style=${{marginBottom:12}}>${d.live?html`<b>AUTO actions are simulated. Actions you approve run for real.</b> <span class="why">Review opens a confirmation form; a real change happens only after you confirm. Payments are always simulated; blocked items can never run.</span>`:html`<b>Nothing here has really executed.</b> <span class="why">${sim?'DRY RUN — every action is a simulation; no external changes will be made.':'Live writes are enabled.'}</span>`}</div>
    <div class="card" style=${{padding:0,overflow:'auto'}}><table id="actions-table"><thead><tr><th>Proposed action</th><th>Target</th><th>State</th><th>Status</th><th></th></tr></thead><tbody>${rows.map(t=>{const [k,l]=status(t);return html`<tr key=${t.id}>
     <td><b>${ACTION[t.action_type]||t.action_type}</b><div><${Simulated} sim=${sim&&!['BLOCKED','FAILED'].includes(stateOf(t))}/></div></td><td class="click" onClick=${()=>openTask(t.id)}>${t.title}<div class="why">${t.result?t.result.why:t.why}</div></td><td><${Badge} s=${stateOf(t)}/></td><td><${Badge} s=${k}>${l}</${Badge}></td>
     <td style=${{whiteSpace:'nowrap'}}>${t.status==='needs_you'?html`<button class="sm pri" onClick=${()=>confirm(t)}>Review…</button> <button class="sm danger" onClick=${()=>post('/reject/'+t.id).then(d.reload)}>Reject</button>`:t.status==='done'&&t.decision==='AUTO'?html`<button class="sm" onClick=${()=>post('/undo/'+t.id).then(d.reload)}>Undo</button>`:null}</td></tr>`})}</tbody></table></div></div>`;
@@ -208,8 +211,19 @@ function Settings(){
    <${Card} title="Readiness checks">${rd?html`<dl class="kv"><dt>Overall</dt><dd><${Badge} s=${rd.ready?'AUTO':'BLOCKED'}>${rd.ready?'READY':'NOT READY'}</${Badge}></dd><dt>Secrets in git</dt><dd>${rd.secrets_scan.clean?'none found':'FOUND: '+rd.secrets_scan.files_with_secrets.join(', ')}</dd><dt>Missing optional</dt><dd>${rd.missing_optional_integrations.map(x=>html`<${Chip} key=${x} c=${x.replace(/_/g,' ')}/>`)}</dd><dt>Firedrill CLI</dt><dd>${rd.firedrill_cli.skipped?'—':rd.firedrill_cli.signed_in?'signed in':'installed, not signed in'}</dd></dl>`:html`<${Loading}/>`}</${Card}></div>`;
 }
 
+/* ---------- reminders (in-app only) ---------- */
+const URG={overdue:['BLOCKED','Overdue'],soon:['ASK','Due soon'],today:['N','Today'],upcoming:['N','Upcoming']};
+const KIND_L={verify:'Verify',approve:'Approve',work:'Focus work','follow-up':'Follow-up',failed:'Failed'};
+function ReminderList({rs,reload,openTask,limit}){
+  if(!rs)return html`<${Loading}/>`; if(!rs.length)return html`<${Empty} title="You're all caught up">Nothing needs you right now.</${Empty}>`;
+  return html`<div id="reminder-list">${rs.slice(0,limit||99).map(r=>html`<div key=${r.id} style=${{display:'flex',gap:10,alignItems:'flex-start',padding:'9px 0',borderBottom:'1px solid var(--line)'}}>
+    <div style=${{flex:1,minWidth:0}}><div><${Badge} s=${URG[r.urgency][0]}>${URG[r.urgency][1]}</${Badge}> <${Chip} c=${KIND_L[r.kind]}/> <small>${T(r.due)}</small></div>
+     <div class="click" style=${{fontWeight:500,marginTop:3,cursor:'pointer'}} onClick=${()=>openTask(r.task_id)}>${r.title}</div><div class="why">${r.what}${r.suggestion?' · '+r.suggestion:''}</div></div>
+    <div style=${{display:'flex',gap:4,flex:'none'}}><button class="sm" onClick=${()=>post('/reminders/'+r.id+'/snooze?minutes=60').then(reload)}>Snooze 1h</button><button class="sm" onClick=${()=>post('/reminders/'+r.id+'/done').then(reload)}>Done</button></div></div>`)}</div>`;
+}
+
 /* ---------- app shell ---------- */
-const IC={overview:'M3 3h7v7H3zM14 3h7v4h-7zM14 11h7v10h-7zM3 14h7v7H3z',tasks:'M4 4h16v16H4zM4 9h16M9 14h6',council:'M12 3v18M5 7h14M5 7l-3 7a4 4 0 0 0 6 0zM19 7l-3 7a4 4 0 0 0 6 0z',actions:'M5 12h14M13 6l6 6-6 6',audit:'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01',sources:'M4 6c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3zM4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3',evals:'M9 12l2 2 4-4M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z',settings:'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z',bolt:'M13 2L4 14h7l-1 8 9-12h-7z',play:'M6 4l14 8-14 8z'};
+const IC={overview:'M3 3h7v7H3zM14 3h7v4h-7zM14 11h7v10h-7zM3 14h7v7H3z',tasks:'M4 4h16v16H4zM4 9h16M9 14h6',council:'M12 3v18M5 7h14M5 7l-3 7a4 4 0 0 0 6 0zM19 7l-3 7a4 4 0 0 0 6 0z',actions:'M5 12h14M13 6l6 6-6 6',audit:'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01',sources:'M4 6c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3zM4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3',evals:'M9 12l2 2 4-4M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z',settings:'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z',bolt:'M13 2L4 14h7l-1 8 9-12h-7z',bell:'M6 8a6 6 0 0 1 12 0c0 7 3 8 3 8H3s3-1 3-8M10 21h4',play:'M6 4l14 8-14 8z'};
 const Icon=({n})=>html`<svg class="i" viewBox="0 0 24 24"><path d=${IC[n]}/></svg>`;
 const NAV=[['overview','Overview','overview'],['tasks','Inbox / Tasks','tasks'],['council','Council Decisions','council'],['actions','Actions','actions'],['audit','Audit Log','audit'],['sources','Sources','sources'],['evals','Evaluations','evals'],['settings','Settings / Safety','settings']];
 const TITLES={overview:['Overview','What Overnight did while you slept'],tasks:['Inbox / Tasks','Every item turned into a scored, explainable task'],council:['Council Decisions','Evidence, specialist opinions, debate and the judge’s decision'],actions:['Actions','Proposed actions — nothing has really executed'],audit:['Audit Log','Redacted history of decisions, policy checks, retries and writes'],sources:['Sources','LIVE vs MOCK connections and hosted-model status'],evals:['Evaluations','Firedrill scenarios, SRE improvements and test status'],settings:['Settings / Safety','Safety guarantees and configuration (no secrets shown)']};
@@ -220,11 +234,13 @@ function App(){
   const [health,setH]=useState(null); const [plan,setPlan]=useState(null); const [brief,setBrief]=useState(null); const [metrics,setM]=useState({}); const [events,setEv]=useState([]); const [running,setRun]=useState(false);
   const [loadErr,setLoadErr]=useState(''); const [toast,setToast]=useState(''); const [sel,setSel]=useState(null); const [drawer,setDrawer]=useState(null); const [conf,setConf]=useState(null); const [open,setOpen]=useState(false); const [runs,setRuns]=useState(0);
   const notify=m=>{setToast(m);setTimeout(()=>setToast(''),3500)};
+  const [rem,setRem]=useState(null); const [bell,setBell]=useState(false); const loadRem=async()=>{try{const j=await api('/reminders');setRem(j.reminders||[])}catch(e){}};
+  useEffect(()=>{loadRem();const i=setInterval(loadRem,30000);return()=>clearInterval(i)},[]);
   const load=async()=>{try{const [p,h]=await Promise.all([api('/plan'),api('/health')]);if(!h._ok)throw new Error('health '+h._s);setH(h);setPlan(p.plan);setBrief(p.brief);setM(p.metrics||{});setRun(!!p.running);setLoadErr('')}catch(e){setLoadErr('Cannot reach the Overnight server: '+e.message)}};
-  useEffect(()=>{load();const es=new EventSource('/events');es.onmessage=e=>{const ev=JSON.parse(e.data);setEv(x=>[...x.slice(-299),ev]);if(['run_complete','ingest','preference'].includes(ev.step)){load();setRuns(n=>n+1)}if(ev.step==='start')setRun(true);if(ev.step==='run_complete')setRun(false)};return()=>es.close()},[]);
+  useEffect(()=>{load();const es=new EventSource('/events');es.onmessage=e=>{const ev=JSON.parse(e.data);setEv(x=>[...x.slice(-299),ev]);if(['run_complete','ingest','preference'].includes(ev.step)){load();loadRem();setRuns(n=>n+1)}if(ev.step==='reminder_due'){notify('Reminder — '+ev.summary)}if(ev.step==='start')setRun(true);if(ev.step==='run_complete')setRun(false)};return()=>es.close()},[]);
   const run=(chaos)=>{setEv([]);post('/run-night'+(chaos?'?chaos='+chaos:''))};
   const tasks=plan?plan.tasks:[]; const sim=!health||health.dry_run!==false; const live=(health&&health.live_sources)||[]; const mock=health?health.connectors.filter(c=>c.mode!=='real').map(c=>c.name):[];
-  const d={plan,tasks,brief,metrics,events,run,reload:load,notify,runs}; const [title,sub]=TITLES[loc.route]; const cnt=s=>tasks.filter(t=>stateOf(t)===s&&t.action_type!=='work').length;
+  const d={plan,tasks,brief,metrics,events,run,reload:load,notify,runs,rem,loadRem,live:!!(health&&health.approved_actions_live),openTask:id=>setDrawer(id)}; const [title,sub]=TITLES[loc.route]; const cnt=s=>tasks.filter(t=>stateOf(t)===s&&t.action_type!=='work').length;
   const openTask=id=>setDrawer(id); const drawerTask=drawer&&tasks.find(t=>t.id===drawer);
   if(loadErr&&!health)return html`<div style=${{padding:40}}><${ErrBox} m=${loadErr}/><p><button class="pri" onClick=${load}>Retry</button></p></div>`;
   const page={overview:()=>html`<${Overview} d=${d} go=${go}/>`,tasks:()=>html`<${Tasks} d=${d} sim=${sim} openTask=${openTask}/>`,council:()=>html`<${Council} d=${d} sel=${sel||loc.q.get('task')} setSel=${setSel}/>`,actions:()=>html`<${Actions} d=${d} sim=${sim} openTask=${openTask} confirm=${setConf}/>`,audit:()=>html`<${Audit}/>`,sources:()=>html`<${Sources} d=${d}/>`,evals:()=>html`<${Evals} d=${d}/>`,settings:()=>html`<${Settings}/>`}[loc.route];
@@ -233,13 +249,15 @@ function App(){
     <nav class="nav">${NAV.map(([k,l,ic])=>html`<a key=${k} href=${'#/'+k} class=${loc.route===k?'on':''} data-nav=${k}><${Icon} n=${ic}/>${l}${k==='tasks'&&tasks.length?html`<span class="ct">${tasks.length}</span>`:k==='council'&&cnt('BLOCKED')+cnt('VERIFY')+cnt('ASK')?html`<span class="ct">${cnt('BLOCKED')+cnt('VERIFY')+cnt('ASK')}</span>`:null}</a>`)}</nav>
     <div class="foot">Plans tomorrow while you sleep.<br/>Dry-run · redacted logs · no secrets</div></aside>
    <div class="main"><header class="top"><button class="menu" onClick=${()=>setOpen(!open)}>☰</button><div class="ttl"><h1 id="page-title">${title}</h1><div class="sub">${sub}</div></div>
+     <span style=${{position:'relative'}}><button id="bell" title="Reminders" onClick=${()=>setBell(!bell)}><${Icon} n="bell"/>${rem&&rem.length?html`<span class="badge b-ASK" id="bell-count" style=${{padding:'0 6px'}}>${rem.length}</span>`:null}</button>
+      ${bell?html`<div class="card" id="bell-panel" style=${{position:'absolute',right:0,top:40,width:'min(460px,92vw)',zIndex:20,boxShadow:'0 12px 32px #0000001f',maxHeight:'70vh',overflow:'auto'}}><div style=${{display:'flex',alignItems:'center',marginBottom:6}}><h2 style=${{margin:0,flex:1}}>Needs you</h2><small>in-app reminders only</small></div><${ReminderList} rs=${rem} reload=${loadRem} openTask=${id=>{setBell(false);openTask(id)}}/></div>`:null}</span>
      <button class="pri" id="run-night" disabled=${running} onClick=${()=>run()}><${Icon} n="play"/>${running?'Running…':'Simulate tonight'}</button>${live.length?null:html`<button disabled=${running} title="Inject a calendar outage and watch retries recover" onClick=${()=>run('calendar_blip')}><${Icon} n="bolt"/>With outage</button>`}</header>
-    <div class="strip" id="mode-strip">${sim?html`<span class="mode">DRY RUN — No external changes will be made.</span>`:html`<span class="mode" style=${{color:'var(--bad)'}}>LIVE WRITES ENABLED</span>`}
+    <div class="strip" id="mode-strip">${sim&&health&&health.approved_actions_live?html`<span class="mode">AUTO actions: DRY RUN — no changes. Approved actions: run for real after your confirmation.</span>`:sim?html`<span class="mode">DRY RUN — No external changes will be made.</span>`:html`<span class="mode" style=${{color:'var(--bad)'}}>LIVE WRITES ENABLED</span>`}
       <span class="src"><b>LIVE SOURCES</b>${live.length?live.map(x=>html`<span key=${x} class="badge b-LIVE">${x}</span>`):html`<small>none</small>`}</span><span class="src"><b>MOCK SOURCES</b>${mock.length?mock.map(x=>html`<span key=${x} class="badge b-MOCK">${x}</span>`):html`<small>none</small>`}</span>
       ${health&&Object.keys(health.source_errors||{}).length?html`<span class="badge b-BLOCKED">Degraded: ${Object.keys(health.source_errors).join(', ')}</span>`:null}</div>
     <main class="page" id="page">${page()}</main></div>
    ${drawerTask?html`<${Drawer} t=${drawerTask} sim=${sim} onClose=${()=>setDrawer(null)} goCouncil=${()=>{setSel(drawerTask.id);setDrawer(null);go('council','task='+drawerTask.id)}} onApprove=${()=>{setConf(drawerTask);setDrawer(null)}} onReject=${()=>{post('/reject/'+drawerTask.id).then(load);setDrawer(null)}}/>`:null}
-   ${conf?html`<${ConfirmModal} task=${conf} sim=${sim} notify=${notify} onClose=${()=>setConf(null)} onDone=${()=>{setConf(null);load()}}/>`:null}
+   ${conf?html`<${ConfirmModal} task=${conf} sim=${sim} live=${!!(health&&health.approved_actions_live)} notify=${notify} onClose=${()=>setConf(null)} onDone=${()=>{setConf(null);load()}}/>`:null}
    ${toast?html`<div id="toast" class="toast">${toast}</div>`:null}</div>`;
 }
 ReactDOM.createRoot(document.getElementById('app')).render(html`<${App}/>`);

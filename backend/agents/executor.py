@@ -1,6 +1,7 @@
 """Executor: performs AUTO actions (and user-approved ones). Idempotent, retried, DRY_RUN-aware.
 Retry/backoff behaviour comes from runtime_config.yaml (patchable)."""
 import hashlib
+import os
 import json
 from .. import config, runtime
 from ..bus import bus, redact
@@ -42,8 +43,8 @@ class Executor:
             "accept_recurring": ("calendar.accept", {"event_id": sid or t.title, "series": True}),
             "rsvp": ("calendar.accept", {"event_id": sid or t.title}),
             "reminder": ("calendar.reminder", {"title": t.title, "start": str(t.due or "")}),
-            "draft_reply": ("gmail.draft", {"in_reply_to": sid, "body": "(draft prepared, not sent)"}),
-            "reply": ("gmail.send", {"in_reply_to": sid}),
+            "draft_reply": ("gmail.draft", {"in_reply_to": sid, "body": t.meta.get("reply_body") or "(draft prepared, not sent)"}),
+            "reply": ("gmail.send", {"in_reply_to": sid, "body": t.meta.get("reply_body", "")}),
             "payment": ("pay.invoice", {"amount": t.amount, "ref": sid}),
             "confirm_meeting": ("composite.confirm_meeting", {"title": t.title, "meeting": t.meta}),
             "cancel_meeting": ("calendar.cancel", {"event_id": sid}),
@@ -85,7 +86,8 @@ class Executor:
             return prev.model_copy(update={"status": "duplicate", "why": "already done (idempotent)"})
         if t.decision == Decision.AUTO and self.actions_run >= load_rules()["guards"]["max_actions_per_night"]:
             return ActionResult(action_id=a.id, ok=False, status="skipped", why="max actions per night reached")
-        if config.DRY_RUN and a.kind != "pay.invoice" and is_real(a.kind.split(".")[0] if not a.kind.startswith("composite") else "calendar"):
+        live_approved = (os.getenv("APPROVED_ACTIONS_LIVE", "").lower() == "true" and t.status == TaskStatus.approved and a.kind != "pay.invoice")
+        if config.DRY_RUN and not live_approved and a.kind != "pay.invoice" and is_real(a.kind.split(".")[0] if not a.kind.startswith("composite") else "calendar"):
             r = ActionResult(action_id=a.id, ok=True, status="dry_run", dry_run=True, why=f"DRY_RUN: would {a.kind} ({t.why})",
                              undo={"kind": a.kind})
         else:

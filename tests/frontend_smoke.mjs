@@ -9,7 +9,7 @@ const done = (code, msg) => { if (msg) console.log(msg); procs.forEach(p => { tr
 const fail = (m) => done(1, 'SMOKE FAIL: ' + m);
 setTimeout(() => fail('timeout'), 150000);
 
-const srv = spawn('.venv/bin/python', ['-m', 'uvicorn', 'backend.app:app', '--port', String(PORT)], { env: { ...process.env, DISABLE_SCHEDULER: '1', SOURCES_MOCK: '1', OVERNIGHT_OFFLINE: '1' }, stdio: 'ignore' });
+const srv = spawn('.venv/bin/python', ['-m', 'uvicorn', 'backend.app:app', '--port', String(PORT)], { env: { ...process.env, DISABLE_SCHEDULER: '1', SOURCES_MOCK: '1', OVERNIGHT_OFFLINE: '1', APPROVED_ACTIONS_LIVE: 'false' }, stdio: 'ignore' });
 procs.push(srv);
 for (let i = 0; i < 40; i++) { try { if ((await fetch(URL + 'health')).ok) break } catch {} await sleep(250); if (i === 39) fail('server did not start'); }
 

@@ -13,7 +13,10 @@ def start():
     from .orchestrator import run_night
     from .state import state
     sched.add_job(lambda: run_night(), "cron", hour=21, minute=0, id="night")
+    from .agents import reminders
     sched.add_job(lambda: bus.emit("Notifier", "morning_brief", state.brief.get("greeting", "No plan yet")), "cron", hour=7, minute=0, id="morning")
+    sched.add_job(reminders.morning_digest, "cron", hour=7, minute=1, id="digest")
+    sched.add_job(reminders.tick, "interval", minutes=5, id="reminder_tick")
     sched.start()
 
 

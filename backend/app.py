@@ -1,5 +1,6 @@
 """FastAPI app: REST + SSE + static single-page frontend."""
 import asyncio
+import os
 import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -43,7 +44,8 @@ def health():
     return {"ok": True, "mock_mode": config.MOCK_MODE, "dry_run": config.DRY_RUN, "connectors": connectors_status(),
             "tonight": config.tonight().isoformat(), "runs": state.run_count, "sie": get_sie().health(), "live_sources": [c["name"] for c in connectors_status() if c["mode"] == "real"],
             "source_errors": IngestAgent.errors,
-            "write_policy": "DRY_RUN: every write is simulated, nothing leaves the machine" if config.DRY_RUN else "LIVE WRITES ENABLED"}
+            "write_policy": "DRY_RUN: every write is simulated, nothing leaves the machine" if config.DRY_RUN else "LIVE WRITES ENABLED",
+            "approved_actions_live": os.getenv("APPROVED_ACTIONS_LIVE", "").lower() == "true"}
 
 
 @app.get("/plan")
@@ -98,11 +100,15 @@ def _task(tid):
     return t
 
 
+class Approval(BaseModel):
+    reply_body: str = ""
+
+
 @app.post("/approve/{tid}")
-def approve(tid: str):
+def approve(tid: str, body: Approval | None = None):
     t = _task(tid)
     try:
-        service.approve_task(t)
+        service.approve_task(t, (body.reply_body if body else ""))
     except service.NotAllowed as e:
         raise HTTPException(e.code, e.msg)
     return t.model_dump(mode="json")
@@ -238,6 +244,34 @@ def audit():
 def memory_ask(body: UserTask):
     from .integrations import cognee_real
     return cognee_real.ask(body.text)
+
+
+@app.get("/reminders")
+def get_reminders():
+    from .agents import reminders
+    rs = reminders.build()
+    return {"reminders": rs, "count": len(rs), "urgent": sum(r["urgency"] in ("overdue", "soon") for r in rs), "channel": "in-app only"}
+
+
+@app.post("/reminders/{rid}/snooze")
+def snooze_reminder(rid: str, minutes: int = 60):
+    from .agents import reminders
+    reminders.snooze(rid, minutes)
+    return {"ok": True}
+
+
+@app.post("/reminders/{rid}/done")
+def done_reminder(rid: str):
+    from .agents import reminders
+    reminders.done(rid)
+    return {"ok": True, "note": "Hidden from reminders only; nothing was approved or executed."}
+
+
+@app.post("/reminders/tick")
+def reminder_tick():
+    from .agents import reminders
+    reminders.tick()
+    return {"ok": True}
 
 
 @app.get("/sources")

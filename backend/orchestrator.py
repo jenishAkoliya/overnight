@@ -110,6 +110,8 @@ def run_night(pace: float = 0.0, reset: bool = False, on_action=None, keep_world
         except Exception:
             pass
         state.run_count += 1
+        from .agents import reminders as _rem
+        _rem.reset()
         state.last_summary = metrics
         bus.emit("Scheduler", "run_complete", f"Done: {metrics['auto_done']} auto, {metrics['needs_you']} need you, {metrics['blocked']} blocked",
                  latency_ms=int(metrics["duration_s"] * 1000), cost=metrics["cost_per_night"])

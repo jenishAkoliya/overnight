@@ -19,11 +19,13 @@ class NotAllowed(Exception):
         self.code, self.msg = code, msg
 
 
-def approve_task(t):
+def approve_task(t, reply_body: str = ""):
     if t.status == TaskStatus.blocked:
         raise NotAllowed(403, "hard-blocked: cannot be approved")
     if t.decision == Decision.VERIFY and not t.verified:
         raise NotAllowed(409, "identity verification required: POST /verify/{id}/start")
+    if reply_body:
+        t.meta = {**t.meta, "reply_body": reply_body[:2000]}
     t.status = TaskStatus.approved
     t.result = executor.execute(t)
     t.status = TaskStatus.done if t.result.ok else TaskStatus.failed
