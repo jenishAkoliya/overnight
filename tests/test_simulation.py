@@ -83,3 +83,15 @@ def test_sre_real_run_apply_and_revert():
     assert sum(r.passed for r in run_all(config_dir=live, quiet=True)) == 15
     agent.revert()
     assert {n: (live / n).read_text() for n in snap} == snap
+
+
+def test_drills_force_mock_sources_and_demo_clock_even_in_live_mode():
+    from backend import config
+    prev = (config.SOURCES_MOCK, config.REAL_CLOCK)
+    config.SOURCES_MOCK, config.REAL_CLOCK = False, True      # pretend we're a live server
+    try:
+        r = run_scenario(sc("s07"), quiet=True)
+        assert r.passed
+        assert (config.SOURCES_MOCK, config.REAL_CLOCK) == (False, True)   # restored afterwards
+    finally:
+        config.SOURCES_MOCK, config.REAL_CLOCK = prev

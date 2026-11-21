@@ -90,6 +90,10 @@ def run_scenario(sc: dict, config_dir: Path | None = None, quiet: bool = False) 
         t0 = time.perf_counter()
         if not quiet:
             bus.emit("Firedrill", "scenario_start", f"{sc['id']} {sc['name']}", why=sc["description"])
+        # Drills are simulations: ALWAYS mock connectors + the fixed demo clock, even on a live server,
+        # so a drill can never read or write a real account.
+        prev_mode = (config.SOURCES_MOCK, config.REAL_CLOCK)
+        config.SOURCES_MOCK, config.REAL_CLOCK = True, False
         try:
             with forced_mock(), runtime.use_config_dir(config_dir or runtime.config_dir()):
                 runtime.clock.virtual = True
@@ -126,7 +130,11 @@ def run_scenario(sc: dict, config_dir: Path | None = None, quiet: bool = False) 
                 results = [evaluate(c, i, ctx) for i, c in enumerate(sc.get("checks", []))]
                 evidence = _evidence(seq0, ctx)
         finally:
+            config.SOURCES_MOCK, config.REAL_CLOCK = prev_mode
             _restore(snap)
+            ab._instances.clear()   # drop mock connector instances so a live server re-creates its real ones
+            from .google_calendar_client import reset_calendar
+            reset_calendar()
         passed = all(r.passed for r in results)
         res = ScenarioResult(id=sc["id"], name=sc["name"], description=sc["description"], status="pass" if passed else "needs_attention",
                              passed=passed, check_results=results, evidence=evidence, duration_ms=int((time.perf_counter() - t0) * 1000))
