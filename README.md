@@ -66,8 +66,8 @@ The steps are visible on the Council page. The hive can only add caution (AUTO�
 ## User facts and suggestions
 `backend/user_profile.yaml` (student, no car, San Jose, VTA/Caltrain/bike, no meetings before 10). The advisor and the Personal-fit expert turn these into suggestions, e.g. "You don't own a car, so this auto-insurance renewal is probably not yours", "No car: take VTA/Caltrain and leave 30 min early".
 
-## Memory: real Cognee
-`cognee==1.6.10` runs in `.venv-cognee` through `scripts/cognee_bridge.py`. Its LLM (Qwen3.8-27B) and embeddings (bge-m3, 1024d) are hosted Superlinked models. After each night the knowledge graph is built in the background; ask it from Overview → *Ask memory*.
+## Memory: Cognee Cloud
+With `COGNEE_SERVICE_URL` + `COGNEE_API_KEY` in `.env`, `scripts/cognee_bridge.py` (in `.venv-cognee`) connects with `cognee.serve()` and sends each night's documents to your Cognee Cloud tenant, which builds the knowledge graph server-side. Ask it from Overview → *Ask memory*. Without those two variables it falls back to the local Cognee engine (LLM Qwen3.8-27B + bge-m3 on Superlinked), and without `.venv-cognee` to the built-in keyword memory.
 
 ## Demo mailbox (self-send)
 `python scripts/demo_emails.py --set student --send` sends 12 synthetic `[OVERNIGHT DEMO]` emails from the test account to itself (only if it is the approved cortona93 account; refuses to send a set twice). Phishing/spoof examples are inserted with `spf=fail`. `--calendar` adds 3 demo events (`sendUpdates=none`). Requires `DEMO_SELF_SEND=true`.

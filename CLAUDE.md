@@ -92,3 +92,5 @@ Google OAuth, Slack token, Anthropic key + model choice, SIE mode, Persona sandb
 - ALLOW_HOSTED_FOR_REAL_DATA=1 by user choice (test mailbox only). DRY_RUN=true.
 - Student email set (12) sent to cortona93 (self-send + 2 inserts). Live result 9/12 expected; 3 conservative misses (AUTO->ASK).
 - Firedrill MCP added (needs /mcp OAuth).
+
+- 16:10 Cognee CLOUD: COGNEE_SERVICE_URL (tenant URL, not secret) + COGNEE_API_KEY; bridge uses cognee.serve(); verified remember + recall; nightly 41 docs pushed. Local engine kept as fallback.

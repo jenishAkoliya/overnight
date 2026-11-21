@@ -11,7 +11,7 @@ from ..bus import bus
 ROOT = Path(__file__).resolve().parent.parent.parent
 PY = ROOT / ".venv-cognee" / "bin" / "python"
 BRIDGE = ROOT / "scripts" / "cognee_bridge.py"
-status = {"available": PY.exists() and BRIDGE.exists(), "state": "idle", "docs": 0, "last_error": "", "last_batch": 0}
+status = {"mode": "cloud" if os.getenv("COGNEE_SERVICE_URL") and os.getenv("COGNEE_API_KEY") else "local", "available": PY.exists() and BRIDGE.exists(), "state": "idle", "docs": 0, "last_error": "", "last_batch": 0}
 _lock = threading.Lock()
 
 
@@ -54,6 +54,6 @@ def ask(question: str) -> dict:
     try:
         r = _run(["recall", question[:300]], timeout=120)
         line = r.stdout.strip().splitlines()[-1] if r.stdout.strip() else "[]"
-        return {"ok": r.returncode == 0, "answers": json.loads(line) if line.startswith("[") else [], "via": "Cognee recall (Superlinked LLM + bge-m3)"}
+        return {"ok": r.returncode == 0, "answers": json.loads(line) if line.startswith("[") else [], "via": ("Cognee Cloud recall" if status["mode"] == "cloud" else "Cognee recall (local engine, Superlinked LLM + bge-m3)")}
     except Exception as e:
         return {"ok": False, "error": str(e)[:200]}

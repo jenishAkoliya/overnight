@@ -14,13 +14,41 @@ os.environ.update({
     "EMBEDDING_PROVIDER": "openai_compatible", "EMBEDDING_MODEL": "BAAI/bge-m3", "EMBEDDING_ENDPOINT": "https://api.superlinked.com/v1",
     "EMBEDDING_API_KEY": key, "EMBEDDING_DIMENSIONS": "1024", "ENABLE_BACKEND_ACCESS_CONTROL": "false",
     "TELEMETRY_DISABLED": "1", "COGNEE_SKIP_CONNECTION_TEST": "true"})
+CLOUD_URL = (env.get("COGNEE_SERVICE_URL") or "").strip()
+CLOUD_KEY = (env.get("COGNEE_API_KEY") or "").strip()
 import cognee  # noqa: E402
 
 cognee.config.system_root_directory(str(ROOT / ".cognee_data" / "system"))
 cognee.config.data_root_directory(str(ROOT / ".cognee_data" / "data"))
 
 
+async def cloud():
+    """Cognee Cloud: the tenant runs extraction/embeddings server-side; we only send documents and questions."""
+    client = await cognee.serve(url=CLOUD_URL, api_key=CLOUD_KEY)
+    cmd = sys.argv[1]
+    try:
+        if cmd == "remember":
+            docs = json.loads(sys.stdin.read(), strict=False)
+            await client.remember(docs, dataset_name=sys.argv[2])
+            print(json.dumps({"ok": True, "n": len(docs), "mode": "cloud"}))
+        elif cmd == "recall":
+            res = await client.recall(sys.argv[2], top_k=5)
+            out = []
+            for r in res or []:
+                if isinstance(r, dict):
+                    out.append(str(r.get("search_result") or r.get("text") or r)[:400])
+                else:
+                    out.append(str(getattr(r, "search_result", None) or r)[:400])
+            print(json.dumps(out))
+        elif cmd == "ping":
+            print(json.dumps({"ok": True, "mode": "cloud"}))
+    finally:
+        await client.close()
+
+
 async def main():
+    if CLOUD_URL and CLOUD_KEY:
+        return await cloud()
     cmd = sys.argv[1]
     if cmd == "remember":
         docs = json.loads(sys.stdin.read(), strict=False)
