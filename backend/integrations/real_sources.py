@@ -39,6 +39,8 @@ def _map_error(e: Exception, service: str):
     if "accessNotConfigured" in s or "has not been used in project" in s:
         return AuthExpired(f"{service}: the {service} API is NOT ENABLED in the Google Cloud project - enable it in Cloud Console > APIs & Services (manual step), then retry")
     code = getattr(getattr(e, "resp", None), "status", None) or getattr(e, "status_code", None)
+    if code == 404 or "notFound" in s:
+        return ValueError(f"{service}: not found - the item no longer exists on {service}")
     if code in (401, 403) or "invalid_grant" in s or "401" in s[:40]:
         return AuthExpired(f"{service}: {s[:120]}")
     if code == 429 or "rateLimit" in s or "429" in s[:40]:
@@ -295,9 +297,14 @@ class RealCalendar(_Real):
                     st = (config.tonight() + timedelta(days=1)).replace(hour=9, minute=0, second=0, microsecond=0)
                 if st.tzinfo is None:
                     st = st.replace(tzinfo=config.TZ)
+                dur = int(params.get("duration_min", 15))
                 body = {"id": "ov" + hashlib.sha1(params.get("idempotency_key", str(st)).encode()).hexdigest()[:30],  # deterministic id = natural idempotency
-                        "summary": params.get("title", "Reminder"), "start": {"dateTime": st.isoformat()}, "end": {"dateTime": (st + timedelta(minutes=15)).isoformat()},
+                        "summary": params.get("title", "Reminder"), "start": {"dateTime": st.isoformat(), "timeZone": config.TZ.key},
+                        "end": {"dateTime": (st + timedelta(minutes=dur)).isoformat(), "timeZone": config.TZ.key},
+                        "description": "Added by Overnight after your approval" + (f" (from email {params['from_email']})" if params.get("from_email") else ""),
                         "reminders": {"useDefault": False, "overrides": [{"method": "popup", "minutes": 10}]}}
+                if params.get("recurrence"):
+                    body["recurrence"] = params["recurrence"]
                 try:
                     return svc.events().insert(calendarId="primary", body=body).execute()
                 except Exception as e:

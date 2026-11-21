@@ -1,6 +1,8 @@
 """Executor: performs AUTO actions (and user-approved ones). Idempotent, retried, DRY_RUN-aware.
 Retry/backoff behaviour comes from runtime_config.yaml (patchable)."""
 import hashlib
+import re
+from datetime import datetime, timedelta
 import os
 import json
 from .. import config, runtime
@@ -12,6 +14,27 @@ from ..policy import load_rules
 from ..standing import standing
 
 SENDING = {"gmail.send", "pay.invoice", "composite.confirm_meeting"}
+
+
+DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+
+
+def invite_when(text: str):
+    """Next occurrence of '<weekday> ... <time>' in an invitation text -> (datetime, recurring?) or None."""
+    low = text.lower()
+    day = next((i for i, d in enumerate(DAYS) if re.search(rf"\b{d[:3]}\w*", low)), None)
+    m = re.search(r"\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b", low) or re.search(r"\b(\d{1,2}):(\d{2})\b", low)
+    if day is None or not m:
+        return None
+    h, mi = int(m.group(1)), int(m.group(2) or 0)
+    ap = m.group(3) if m.lastindex and m.lastindex >= 3 else None
+    if ap == "pm" and h < 12:
+        h += 12
+    if ap == "am" and h == 12:
+        h = 0
+    now = config.tonight()
+    d = now.date() + timedelta(days=((day - now.weekday()) % 7) or 7)
+    return datetime(d.year, d.month, d.day, h, mi, tzinfo=config.TZ), bool(re.search(r"recurring|weekly|every|\w+days\b", low))
 
 
 class Payments:
@@ -52,6 +75,12 @@ class Executor:
         if t.action_type not in mp:
             return None
         kind, params = mp[t.action_type]
+        if t.action_type in ("accept_recurring", "rsvp") and sid.startswith("gmail-"):
+            # an invitation that only exists as an email: "accepting" = putting the event on the user's calendar
+            when = invite_when(f"{(t.item or {}).get('subject', '')} {t.title}")
+            kind, params = "calendar.insert", {"title": re.sub(r"^(\[[^\]]+\]\s*)?(Invitation:|RSVP:)\s*", "", (t.item or {}).get("subject", t.title)).split("(")[0].strip() or t.title,
+                                               "start": when[0].isoformat() if when else "", "duration_min": 60,
+                                               "recurrence": ["RRULE:FREQ=WEEKLY"] if when and when[1] else [], "from_email": sid}
         key = hashlib.sha1(json.dumps([t.id, kind, params], sort_keys=True, default=str).encode()).hexdigest()[:16]
         return Action(id=f"a-{key[:8]}", task_id=t.id, kind=kind, params=params, idempotency_key=key)
 
@@ -143,7 +172,9 @@ class Executor:
             get_connector("calendar").execute("events.insert", {"title": m.get("title", a.params["title"]), "start": m.get("start"), "idempotency_key": k + "-cal"})
             self.partial_note = ""
             return
-        opname = {"archive": "messages.update", "label": "labels.apply", "draft": "drafts.create", "send": "messages.send",
+        if a.kind == "calendar.insert" and not a.params.get("start"):
+            raise ValueError("could not find a date/time in the invitation - add it to your calendar manually")
+        opname = {"insert": "events.insert", "archive": "messages.update", "label": "labels.apply", "draft": "drafts.create", "send": "messages.send",
                   "accept": "events.accept", "reminder": "reminders.create", "cancel": "events.delete"}[op]
         get_connector(sys).execute(opname, {**a.params, "idempotency_key": k})
 
